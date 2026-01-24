@@ -110,3 +110,128 @@ def calculate_portfolio_metrics(df: pd.DataFrame, current_prices: dict, usd_krw_
     res['최종현재가'] = res.apply(calc_implied_price, axis=1)
 
     return res
+
+
+def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0.03) -> float:
+    """
+    샤프 지수(Sharpe Ratio) 계산
+
+    Args:
+        returns: 수익률 시계열 (예: 일별 수익률)
+        risk_free_rate: 무위험 수익률 (연율, 기본값 3%)
+
+    Returns:
+        Sharpe Ratio (높을수록 위험 대비 수익이 좋음)
+    """
+    if len(returns) == 0 or returns.std() == 0:
+        return 0.0
+
+    # 연율화된 수익률과 변동성
+    mean_return = returns.mean() * 252  # 연간 거래일 252일 가정
+    std_return = returns.std() * np.sqrt(252)
+
+    sharpe = (mean_return - risk_free_rate) / std_return
+    return sharpe
+
+
+def calculate_portfolio_beta(portfolio_returns: pd.Series, market_returns: pd.Series) -> float:
+    """
+    포트폴리오 베타(Beta) 계산
+
+    Args:
+        portfolio_returns: 포트폴리오 수익률 시계열
+        market_returns: 시장(벤치마크) 수익률 시계열
+
+    Returns:
+        Beta (1.0: 시장과 동일, >1.0: 시장보다 변동성 큼, <1.0: 시장보다 안정적)
+    """
+    if len(portfolio_returns) < 2 or len(market_returns) < 2:
+        return 1.0  # 기본값
+
+    # 공분산 / 시장 분산
+    covariance = np.cov(portfolio_returns, market_returns)[0, 1]
+    market_variance = np.var(market_returns)
+
+    if market_variance == 0:
+        return 1.0
+
+    beta = covariance / market_variance
+    return beta
+
+
+def calculate_correlation_matrix(df: pd.DataFrame, price_history: dict) -> pd.DataFrame:
+    """
+    포트폴리오 종목 간 상관계수 행렬 계산
+
+    Args:
+        df: 포트폴리오 데이터프레임
+        price_history: {ticker: pd.Series} 형태의 가격 히스토리
+
+    Returns:
+        상관계수 행렬 DataFrame
+    """
+    if df.empty or not price_history:
+        return pd.DataFrame()
+
+    # 수익률 계산
+    returns_dict = {}
+    for ticker, prices in price_history.items():
+        if len(prices) > 1:
+            returns = prices.pct_change().dropna()
+            returns_dict[ticker] = returns
+
+    if not returns_dict:
+        return pd.DataFrame()
+
+    # 데이터프레임으로 변환 후 상관계수 계산
+    returns_df = pd.DataFrame(returns_dict)
+    correlation_matrix = returns_df.corr()
+
+    return correlation_matrix
+
+
+def calculate_portfolio_risk_metrics(df: pd.DataFrame, risk_free_rate: float = 0.03) -> dict:
+    """
+    포트폴리오 종합 리스크 지표 계산
+
+    Args:
+        df: calculate_portfolio_metrics로 계산된 포트폴리오 데이터
+        risk_free_rate: 무위험 수익률 (연율)
+
+    Returns:
+        리스크 지표 딕셔너리 {
+            'total_return': 전체 수익률,
+            'volatility': 변동성,
+            'sharpe_ratio': 샤프 지수,
+            'max_position_pct': 최대 종목 비중,
+            'concentration_risk': 집중도 리스크 (상위 3종목 비중)
+        }
+    """
+    if df.empty:
+        return {}
+
+    total_value = df['평가금액(KRW)'].sum()
+    total_cost = df['매수금액(KRW)'].sum()
+
+    # 전체 수익률
+    total_return = (total_value - total_cost) / total_cost if total_cost > 0 else 0.0
+
+    # 종목별 비중
+    df['비중(%)'] = (df['평가금액(KRW)'] / total_value * 100) if total_value > 0 else 0
+
+    # 집중도 리스크 (상위 3종목)
+    top3_weight = df.nlargest(3, '평가금액(KRW)')['비중(%)'].sum()
+
+    # 변동성 (종목별 수익률의 가중 표준편차 근사)
+    returns = df['수익률(%)'].values
+    weights = df['비중(%)'].values / 100
+    portfolio_volatility = np.sqrt(np.sum((weights * returns) ** 2))
+
+    return {
+        'total_return': total_return * 100,  # 퍼센트
+        'volatility': portfolio_volatility,
+        'sharpe_ratio': total_return / (portfolio_volatility / 100) if portfolio_volatility > 0 else 0,
+        'max_position_pct': df['비중(%)'].max(),
+        'concentration_risk': top3_weight,
+        'num_positions': len(df)
+    }

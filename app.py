@@ -141,36 +141,58 @@ if not df.empty:
 
                 holdings_text = '\n'.join(holdings_detail[:10])  # Top 10 for context
 
-                prompt = f"""당신은 15년 경력의 재정 전문가입니다. 다음 포트폴리오를 분석하고 **즉시 실행 가능한 구체적인 액션**을 제공하세요.
+                # Calculate risk metrics
+                from skills.finance_core_lib import calculate_portfolio_risk_metrics
+                risk_metrics = calculate_portfolio_risk_metrics(result_df)
 
-**포트폴리오 요약:**
+                # Sector/Category analysis
+                sector_summary = ""
+                if '카테고리' in result_df.columns:
+                    sector_dist = result_df.groupby('카테고리')['평가금액(KRW)'].sum()
+                    sector_pct = (sector_dist / total_value * 100).round(1)
+                    sector_summary = '\n'.join([f"- {cat}: {pct:.1f}%" for cat, pct in sector_pct.items()])
+
+                prompt = f"""당신은 CFA 자격을 보유한 15년 경력의 포트폴리오 매니저입니다.
+**Top-Down 시장 분석**과 **Bottom-Up 종목 분석**을 결합하여 구체적인 실행 액션을 제공하세요.
+
+## 📊 포트폴리오 현황 (Top-Down View)
 - 총 종목 수: {len(result_df)}개
 - 총 투자금액: ₩{total_cost/1e8:.1f}억
 - 총 평가금액: ₩{total_value/1e8:.1f}억
-- 총 손익: ₩{total_profit/1e6:.0f}백만 ({return_pct:.2f}%)
+- 총 수익률: {return_pct:.2f}%
 
-**주요 종목 현황:**
+**리스크 지표:**
+- 최대 종목 비중: {risk_metrics.get('max_position_pct', 0):.1f}% (권장: 15% 이하)
+- 상위 3종목 집중도: {risk_metrics.get('concentration_risk', 0):.1f}% (권장: 40% 이하)
+- 포트폴리오 변동성: {risk_metrics.get('volatility', 0):.2f}%
+
+**섹터 배분:**
+{sector_summary if sector_summary else '(분석 불가)'}
+
+## 🔍 주요 종목 현황 (Bottom-Up View)
 {holdings_text}
 
-다음 형식으로 **구체적이고 실행 가능한** 조언을 제공하세요:
+## 💡 전문가 분석 및 액션 플랜
 
-### 🎯 이번 주 실행 액션
-1. [종목명 (티커)]: 구체적 액션 - 예: "50% 익절 (약 ₩XX백만), 목표가 $YY 도달"
-2. [종목명 (티커)]: 구체적 액션 - 예: "손절 고려, 추가 -5% 하락시 정리"
-3. (최대 3개, 없으면 생략)
+### 1️⃣ Top-Down 평가
+- **포트폴리오 건전성**: (집중도/섹터 분산/리스크 수준 1-2줄 평가)
+- **거시 환경 고려**: 현재 시장 국면에서 이 포트폴리오가 적절한지
 
-### 👀 관찰 종목
-- [종목명]: "현재가 $XX, $YY 돌파시 추가 매수 / $ZZ 하락시 손절"
-- (구체적 가격 레벨과 조건 제시)
+### 2️⃣ Bottom-Up 실행 액션 (최대 3개)
+1. **[종목명 (티커)]**: 구체적 액션
+   - 예: "PLTR 30% 익절 (약 ₩150만원), 현재가 $85 → 목표가 $90 도달시"
+2. **[종목명 (티커)]**: 구체적 액션
+   - 예: "MSFT 손절 검토, -10% 추가 하락시 전량 정리 (₩100만원)"
 
-### 💡 포트폴리오 균형
-- 문제: (예: 특정 섹터 과다 비중)
-- 해결: "현재 XX% → YY%로 조정, [종목A]에서 ₩ZZ백만 → [종목B]로 이동"
+### 3️⃣ 포트폴리오 리밸런싱 제안
+- 문제: (예: "AI 섹터 과다 비중 55%")
+- 해결: (예: "NVDA 20% 감축 → 헬스케어 ETF 추가, ₩300만원 이동")
 
-**중요**:
-- 모든 추천에 구체적 종목명, 금액, 비율, 가격 포함
-- 막연한 조언 금지 ("분산 투자 하세요" X, "PLTR 30% 익절 후 반도체 ETF에 재투자" O)
-- 400자 이내, 실행 가능한 내용만"""
+**작성 원칙**:
+✅ 모든 액션에 종목명, 금액, 가격, 조건 명시
+✅ 리스크 지표 기반 근거 제시
+❌ 막연한 조언 금지 ("분산 투자 하세요" 같은 것)
+- 500자 이내, 실행 가능한 내용만"""
 
                 response = client.models.generate_content(
                     model="gemini-2.5-flash",
@@ -186,17 +208,22 @@ if not df.empty:
             except Exception as e:
                 status_text.error(f"❌ Error: {str(e)}")
                 st.exception(e)
-        
-        if 'risk_data' in st.session_state:
-            rd = st.session_state.risk_data
-            st.metric("Portfolio Beta", f"{rd.get('beta', 0):.2f}")
-            st.progress(rd.get('risk_score', 0) / 100)
-            st.caption(f"Risk Index: {rd.get('risk_score', 0)}/100")
-            
-            if rd.get('correlation') is not None:
-                fig_corr = px.imshow(rd['correlation'], text_auto=".2f", color_continuous_scale="RdBu_r", aspect="auto")
-                fig_corr.update_layout(height=300, margin=dict(t=0,b=0,l=0,r=0), showlegend=False)
-                st.plotly_chart(fig_corr, use_container_width=True)
+
+        # Display risk metrics
+        st.divider()
+        st.markdown("**📊 Risk Metrics**")
+        if 'calculated_portfolio' in st.session_state:
+            from skills.finance_core_lib import calculate_portfolio_risk_metrics
+            risk_metrics = calculate_portfolio_risk_metrics(st.session_state.calculated_portfolio)
+
+            col_r1, col_r2 = st.columns(2)
+            col_r1.metric("Max Position", f"{risk_metrics.get('max_position_pct', 0):.1f}%",
+                         "⚠️ High" if risk_metrics.get('max_position_pct', 0) > 15 else "✅ OK")
+            col_r2.metric("Top 3 Concentration", f"{risk_metrics.get('concentration_risk', 0):.1f}%",
+                         "⚠️ High" if risk_metrics.get('concentration_risk', 0) > 40 else "✅ OK")
+
+            st.metric("Portfolio Volatility", f"{risk_metrics.get('volatility', 0):.2f}%")
+            st.caption(f"Sharpe Ratio: {risk_metrics.get('sharpe_ratio', 0):.2f}")
 
     # [중앙: Intelligence]
     with col_intel:
