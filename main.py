@@ -4,7 +4,7 @@ import re
 from typing import Dict, Any, Optional
 from core.base import BaseAgent
 from core.memory import MemorySystem
-from agents.finance import FinanceAgent
+from agents.crews.finance_crew import FinanceCrew
 
 # 윈도우 환경 인코딩 호환성 패치 (제거됨: 시스템 기본값 사용)
 # if sys.platform == 'win32':
@@ -48,11 +48,11 @@ class GeminiOmniSystem:
 
     def _register_agents(self):
         """서브 에이전트 등록 및 초기화"""
-        # [SLOT 01] Finance Agent 등록 (Memory 주입)
-        self.agents['finance'] = FinanceAgent(name="FinanceAgent", memory=self.memory)
-        logger.info("Agent registered: FinanceAgent")
-        
-        # 추후 다른 에이전트들도 여기서 등록
+        # [SLOT 01] Finance Crew 등록 (CrewAI 기반, Memory 주입)
+        self.agents['finance'] = FinanceCrew(memory_system=self.memory, spreadsheet_name="GEM_Finance_Portfolio")
+        logger.info("Agent registered: FinanceCrew (CrewAI-powered)")
+
+        # 추후 다른 에이전트들도 여기서 등록 (건강, 관계, 교육 등)
 
     def route_request(self, user_input: str):
         """사용자 입력을 분석하여 적절한 에이전트에게 라우팅"""
@@ -64,16 +64,29 @@ class GeminiOmniSystem:
         has_ticker = bool(re.search(r'\b[A-Z]{2,5}\b', user_input))
 
         # 단순 키워드 기반 라우팅 (임시 로직)
-        if "재정" in user_input or "주식" in user_input or "돈" in user_input or has_ticker:
-            target_agent = self.agents.get('finance')
-            if target_agent:
-                response = target_agent.process({"intent": user_input})
-                print(f"\n[GEM: OMNI] {response['result']}\n")
-                
+        if "재정" in user_input or "주식" in user_input or "돈" in user_input or "분석" in user_input or has_ticker:
+            finance_crew = self.agents.get('finance')
+            if finance_crew:
+                print("\n[GEM: OMNI] FinanceCrew 실행 중... (4단계 워크플로우)")
+                print("  1. 데이터 동기화 (Google Sheets + KIS API)")
+                print("  2. 포트폴리오 분석 (메트릭 계산)")
+                print("  3. 리스크 평가 (베타, 상관계수)")
+                print("  4. AI 전략 생성 (Gemini)")
+                print()
+
+                result = finance_crew.generate_full_report()
+
+                if result['success']:
+                    response_msg = f"✅ 재정 분석 완료!\n\n{result['strategy_report']}"
+                else:
+                    response_msg = f"❌ 오류 발생: {result.get('message', 'Unknown error')}"
+
+                print(f"\n[GEM: OMNI] {response_msg}\n")
+
                 # 에이전트 응답 기억
-                self.memory.add_dialogue("agent", response['result'])
+                self.memory.add_dialogue("agent", response_msg)
             else:
-                msg = "재정 에이전트를 찾을 수 없습니다."
+                msg = "재정 Crew를 찾을 수 없습니다."
                 print(f"\n[GEM: OMNI] {msg}\n")
                 self.memory.add_dialogue("agent", msg)
         
