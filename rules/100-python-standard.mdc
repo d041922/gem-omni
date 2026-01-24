@@ -1,0 +1,40 @@
+---
+alwaysApply: true
+---
+
+# Python Coding Standards & Safety Protocols
+
+## 1. Syntax Safety (Critically Important)
+에이전트는 코드를 작성할 때 다음의 문법 오류 패턴을 엄격히 피해야 한다.
+
+### 1.1 F-String 복잡도 제한 (No Complex F-Strings)
+- **Rule:** f-string 내부(`{}`)에는 변수명이나 간단한 연산만 허용한다.
+- **Ban:** f-string 내부에서 **리스트 컴프리헨션, 함수 호출, 복잡한 조건문**을 절대 사용하지 않는다.
+- **Reason:** 괄호 매칭 오류(`SyntaxError`)와 가독성 저하의 주원인이다.
+
+**[Bad Example]**
+```python
+# 절대 금지: 괄호 짝 맞추기 어렵고 가독성 최악
+text = f"{'
+'.join([f'- {i}' for i in items])}" 
+```
+
+**[Good Example]**
+```python
+# 변수로 분리하여 안전 확보
+item_lines = [f"- {i}" for i in items]
+text = "\n".join(item_lines)
+```
+
+### 1.2 포맷팅 표준 (Formatting Standards)
+- **Currency:** 한국 원화 등 통화 표기 시 반드시 천 단위 콤마를 포함한다.
+    - `f"₩{value:,.0f}"` (O)
+    - `f"₩{value:,0f}"` (X) - SyntaxError 유발
+
+## 2. Code Structure
+- **Type Hinting:** 모든 함수 시그니처에 Type Hint를 명시한다.
+- **Modularization:** 하나의 함수는 하나의 역할만 수행한다. 50라인이 넘어가는 함수는 분리한다.
+
+## 3. Self-Correction Protocol
+- 코드를 출력하기 전에 반드시 `ast.parse()`를 마음속으로 수행하여 `SyntaxError` 가능성을 점검한다.
+- 특히 `f-string`, `괄호 짝() [] {}`, `들여쓰기`를 3중 체크한다.

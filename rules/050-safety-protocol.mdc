@@ -1,0 +1,59 @@
+---
+alwaysApply: true
+---
+
+# Safety Protocol
+
+## File Modification Rules
+
+1. **One file at a time**: Modify only one file per operation to minimize risk
+2. **Backup before modify**: Always ensure Git backup branch exists before major changes
+3. **Prefer Edit over Write**: Use Edit tool for existing files, never overwrite entire files
+4. **Commit immediately**: Create Git commit immediately after successful modifications
+
+## Error Handling Rules
+
+1. **Three-strike rule**: If same error occurs 3 times, change approach completely
+2. **Immediate rollback**: On error, immediately offer Git rollback option
+3. **Test-first development**: Never implement features without test code
+4. **Validate before commit**: Run syntax checks and basic tests before committing
+
+## Code Review Rules
+
+1. **Read before modify**: Always read file contents before suggesting modifications
+2. **Understand context**: Check related files to understand full context
+3. **Preserve patterns**: Follow existing code patterns and conventions
+4. **Document changes**: Add comments explaining non-obvious changes
+
+## Critical Operations
+
+### Before deleting files:
+- Confirm with user
+- Create backup branch
+- Document reason for deletion
+
+### Before modifying main.py or app.py:
+- Review full file first
+- Test changes in isolation
+- Have rollback plan ready
+
+### Before installing new packages:
+- Check compatibility with existing packages
+- Update requirements.txt immediately
+- Test import in isolation
+
+## Emergency Procedures
+
+If something goes wrong:
+1. STOP immediately
+2. Do NOT make more changes
+3. Offer Git rollback: `git checkout backup-original`
+4. Analyze what went wrong
+5. Plan safer approach
+
+## Security Rules
+
+1. **Never commit secrets**: Check for API keys, passwords, tokens before commit
+2. **Validate .gitignore**: Ensure .env and secrets.toml are excluded
+3. **Sanitize logs**: Remove sensitive data from log files
+4. **Review dependencies**: Check for known vulnerabilities in packages

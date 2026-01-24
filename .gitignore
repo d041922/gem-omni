@@ -1,0 +1,39 @@
+# Environment and secrets
+.env
+.streamlit/secrets.toml
+
+# Memory and data files
+memory/*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Charts and temporary files
+charts/
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project specific
+ref/
