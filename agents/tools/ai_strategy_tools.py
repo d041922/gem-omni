@@ -2,11 +2,12 @@
 AI Strategy Tools for CrewAI
 Uses Gemini API to generate strategy insights
 """
-from crewai_tools import BaseTool
+from crewai.tools import BaseTool
 from typing import Type, Any, Dict
 from pydantic import BaseModel, Field
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -48,15 +49,14 @@ class GeminiStrategyTool(BaseTool):
         """
         try:
             # Initialize Gemini
-            api_key = os.getenv("GEMINI_API_KEY")
+            api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
             if not api_key:
                 return {
                     "success": False,
-                    "message": "GEMINI_API_KEY not found in environment variables"
+                    "message": "GEMINI_API_KEY or GOOGLE_API_KEY not found in environment variables"
                 }
 
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-2.0-flash-exp")
+            client = genai.Client(api_key=api_key)
 
             # Create prompt
             prompt = f"""
@@ -83,13 +83,16 @@ Format your response in clear, structured sections with bullet points.
 """
 
             # Generate response
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt
+            )
             strategy_text = response.text
 
             return {
                 "success": True,
                 "strategy_report": strategy_text,
-                "model_used": "gemini-2.0-flash-exp",
+                "model_used": "gemini-2.5-flash",
                 "message": "Successfully generated AI strategy report"
             }
         except Exception as e:

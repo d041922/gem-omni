@@ -2,7 +2,7 @@
 KIS (Korea Investment & Securities) API Tools for CrewAI
 Wraps existing kis_tools functionality into CrewAI Tools
 """
-from crewai_tools import BaseTool
+from crewai.tools import BaseTool
 from typing import Type, Any, Dict
 from pydantic import BaseModel, Field
 import sys

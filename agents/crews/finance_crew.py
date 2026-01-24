@@ -41,12 +41,13 @@ class FinanceCrew:
         # Define Tasks
         self.sync_task = Task(
             description=f"""Load and synchronize portfolio data from multiple sources:
+
 1. Load portfolio data from Google Sheets spreadsheet named '{spreadsheet_name}'
 2. Fetch real-time account data from KIS API
 3. Combine and validate data from both sources
 4. Ensure data consistency and handle any discrepancies
 
-Return a structured summary of the loaded data including:
+Return a structured summary including:
 - Number of positions loaded
 - Total portfolio value
 - Data source details
@@ -57,27 +58,27 @@ Return a structured summary of the loaded data including:
 
         self.analysis_task = Task(
             description="""Analyze the synchronized portfolio data:
+
 1. Calculate key portfolio metrics for each position:
    - Purchase cost (매수금액)
    - Current evaluation (평가금액)
    - Profit/Loss (손익)
    - Return percentage (수익률)
 2. Calculate total portfolio metrics
-3. Identify top performers and underperformers
-4. Analyze asset allocation
+3. Identify top 3 performers and bottom 3 underperformers
+4. Analyze asset allocation by category
 5. Calculate USD/KRW currency exposure
 
-Provide a comprehensive analysis report with:
-- Summary statistics
-- Position-level details
-- Performance insights""",
+Provide a comprehensive analysis report with summary statistics,
+position-level details, and performance insights.""",
             agent=analyst_agent,
-            expected_output="Comprehensive portfolio metrics report with calculated returns and analysis",
-            context=[self.sync_task]  # Uses data from sync_task
+            expected_output="Comprehensive portfolio metrics report with calculated returns and top/bottom performers",
+            context=[self.sync_task]
         )
 
         self.risk_task = Task(
             description="""Perform quantitative risk assessment on the portfolio:
+
 1. Calculate portfolio beta (market sensitivity)
 2. Analyze correlation matrix between holdings
 3. Assess diversification quality
@@ -86,55 +87,66 @@ Provide a comprehensive analysis report with:
 
 Provide a risk assessment report including:
 - Portfolio beta value
-- Key correlation insights
-- Diversification score
+- Key correlation insights (highly correlated pairs)
+- Diversification score assessment
 - Risk warnings and concerns
 - Risk mitigation recommendations""",
             agent=risk_agent,
-            expected_output="Quantitative risk assessment report with beta, correlations, and risk metrics",
-            context=[self.analysis_task]  # Uses analysis results
+            expected_output="Quantitative risk assessment report with beta, correlations, and actionable risk insights",
+            context=[self.analysis_task]
         )
 
         self.strategy_task = Task(
             description="""Generate comprehensive investment strategy recommendations:
+
 1. Synthesize insights from portfolio analysis and risk assessment
 2. Generate AI-powered strategy report using Gemini
-3. Provide actionable recommendations
+3. Provide 5-7 actionable recommendations with specific steps
 4. Identify specific opportunities and threats
 5. Create prioritized action plan
 
 The strategy report should include:
-- Portfolio Health Assessment
-- Risk Assessment Summary
-- Strategic Recommendations (specific actions)
-- Potential Concerns (what to watch)
-- Action Items (prioritized list)
+- Portfolio Health Assessment (overall evaluation)
+- Risk Assessment Summary (key findings)
+- Strategic Recommendations (specific, actionable items)
+- Potential Concerns (what to monitor)
+- Action Items (prioritized 1-2-3 list)
 
-Use clear, non-technical language that investors can understand and act upon.""",
+Use clear language that investors can understand and act upon.
+Back all recommendations with data from the analysis.""",
             agent=strategy_agent,
-            expected_output="Comprehensive AI-powered investment strategy report with actionable recommendations in JSON format",
-            context=[self.analysis_task, self.risk_task]  # Uses both analysis and risk results
+            expected_output="Comprehensive AI-powered investment strategy report with 5-7 actionable recommendations",
+            context=[self.analysis_task, self.risk_task]
         )
 
         # Create Crew
         self.crew = Crew(
             agents=[data_sync_agent, analyst_agent, risk_agent, strategy_agent],
             tasks=[self.sync_task, self.analysis_task, self.risk_task, self.strategy_task],
-            verbose=True,
-            process=Process.sequential,  # Execute tasks in order
-            memory=False  # Disable built-in memory (we use custom memory system)
+            verbose=False,
+            process=Process.sequential,
+            memory=False
         )
 
-    def generate_full_report(self) -> Dict[str, Any]:
+    def generate_full_report(self, progress_callback=None) -> Dict[str, Any]:
         """
-        Execute the full portfolio analysis workflow
+        Execute the full portfolio analysis workflow with progress updates
+
+        Args:
+            progress_callback: Optional callback function(step, total, message)
 
         Returns:
             Dictionary containing results from all four tasks
         """
         try:
+            if progress_callback:
+                progress_callback(1, 4, "Syncing data from Google Sheets + KIS API")
+
             # Execute crew workflow
             result = self.crew.kickoff()
+
+            if progress_callback:
+                progress_callback(4, 4, "Analysis complete")
 
             # Parse result
             # CrewAI returns the output of the last task by default

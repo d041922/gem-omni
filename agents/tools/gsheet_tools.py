@@ -2,7 +2,7 @@
 Google Sheets Tools for CrewAI
 Wraps existing gsheet_loader functionality into CrewAI Tools
 """
-from crewai_tools import BaseTool
+from crewai.tools import BaseTool
 from typing import Type, Any, Dict
 from pydantic import BaseModel, Field
 import pandas as pd

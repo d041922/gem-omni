@@ -2,7 +2,7 @@
 Quantitative Risk Analysis Tools for CrewAI
 Wraps existing quant_engine functionality into CrewAI Tools
 """
-from crewai_tools import BaseTool
+from crewai.tools import BaseTool
 from typing import Type, Any, Dict, List
 from pydantic import BaseModel, Field
 import sys

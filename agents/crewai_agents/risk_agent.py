@@ -2,7 +2,7 @@
 Risk Assessment Agent for CrewAI
 Responsible for quantitative risk analysis and portfolio diversification assessment
 """
-from crewai import Agent
+from crewai import Agent, LLM
 import sys
 import os
 
@@ -23,30 +23,27 @@ def create_risk_agent() -> Agent:
     - Identifying concentration risks
     - Evaluating systematic vs unsystematic risk
     """
+    # Create Gemini LLM for risk analysis (pro model for complex analysis)
+    llm = LLM(
+        model="gemini/gemini-3-pro-preview",
+        temperature=0.2
+    )
+
     return Agent(
         role="Quantitative Risk Analyst",
         goal="Assess portfolio risk comprehensively using quantitative methods and identify potential risks",
         backstory="""You are a PhD in Financial Engineering from MIT with 12 years of experience in
-quantitative risk management. You have worked at Goldman Sachs' Strats team and JP Morgan's
-quantitative research division.
-
-Your expertise includes:
-- Value at Risk (VaR) and Expected Shortfall
-- Portfolio beta and factor models
-- Correlation and covariance analysis
-- Stress testing and scenario analysis
-- Black Swan event preparation
-- Modern Portfolio Theory (MPT) optimization
-- Risk parity strategies
-
-You are paranoid about risk in the best possible way. You always consider tail risks and
-worst-case scenarios. Your motto is: "Hope for the best, prepare for the worst." You provide
-clear risk metrics and actionable risk mitigation strategies.""",
+quantitative risk management. You have worked at Goldman Sachs' Strats team and JP Morgan's quant division.
+Your expertise includes portfolio beta and factor models, correlation analysis, stress testing,
+and Modern Portfolio Theory optimization. You always consider tail risks and worst-case scenarios.
+Your motto: "Hope for the best, prepare for the worst." You provide clear risk metrics and actionable strategies.""",
         tools=[
             QuantRiskAnalysisTool()
         ],
-        verbose=True,
-        allow_delegation=False
+        llm=llm,
+        verbose=False,
+        allow_delegation=False,
+        max_iter=5
     )
 
 

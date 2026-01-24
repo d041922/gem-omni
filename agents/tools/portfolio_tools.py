@@ -2,7 +2,7 @@
 Portfolio Calculation Tools for CrewAI
 Wraps existing finance_core_lib functionality into CrewAI Tools
 """
-from crewai_tools import BaseTool
+from crewai.tools import BaseTool
 from typing import Type, Any, Dict, List
 from pydantic import BaseModel, Field
 import pandas as pd
