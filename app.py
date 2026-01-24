@@ -4,8 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from core.memory import MemorySystem
-from agents.portfolio_manager import PortfolioManager
-from agents.finance import FinanceAgent
+from agents.crews.finance_crew import FinanceCrew
 
 # --- 1. Page Config ---
 st.set_page_config(page_title="GEM: OMNI Command Center", page_icon="💎", layout="wide", initial_sidebar_state="collapsed")
@@ -30,9 +29,13 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- 3. Init ---
-if 'memory' not in st.session_state: st.session_state.memory = MemorySystem()
-if 'pm' not in st.session_state: st.session_state.pm = PortfolioManager(st.session_state.memory)
-if 'agent' not in st.session_state: st.session_state.agent = FinanceAgent(memory=st.session_state.memory)
+if 'memory' not in st.session_state:
+    st.session_state.memory = MemorySystem()
+if 'finance_crew' not in st.session_state:
+    st.session_state.finance_crew = FinanceCrew(
+        memory_system=st.session_state.memory,
+        spreadsheet_name="GEM_Finance_Portfolio"
+    )
 
 # --- 4. Top Bar (Global Market Pulse) ---
 st.markdown("<p class='panel-header'>Global Market Pulse</p>", unsafe_allow_html=True)
@@ -56,11 +59,21 @@ if not df.empty:
     # [좌측: Health]
     with col_health:
         st.markdown("<p class='panel-header'>🛡️ Portfolio Health</p>", unsafe_allow_html=True)
-        if st.button("🔍 Run Full Audit", use_container_width=True):
-            with st.spinner("Analyzing Team Report..."):
-                report, risk_data = st.session_state.pm.get_full_command_report(st.session_state.agent)
-                st.session_state.full_report = report
-                st.session_state.risk_data = risk_data
+        if st.button("🔍 Run Full Audit (CrewAI)", use_container_width=True):
+            with st.spinner("Running FinanceCrew (4-step workflow)..."):
+                st.info("1️⃣ Data Sync: Loading from Google Sheets + KIS API")
+                st.info("2️⃣ Analysis: Calculating portfolio metrics")
+                st.info("3️⃣ Risk Assessment: Beta & correlation analysis")
+                st.info("4️⃣ AI Strategy: Generating Gemini report")
+
+                result = st.session_state.finance_crew.generate_full_report()
+
+                if result['success']:
+                    st.session_state.full_report = result
+                    st.session_state.crew_report = result['strategy_report']
+                    st.success("✅ Full audit completed!")
+                else:
+                    st.error(f"❌ Error: {result.get('message', 'Unknown error')}")
         
         if 'risk_data' in st.session_state:
             rd = st.session_state.risk_data
@@ -75,36 +88,38 @@ if not df.empty:
 
     # [중앙: Intelligence]
     with col_intel:
-        st.markdown("<p class='panel-header'>🧠 AI Strategy Intelligence</p>", unsafe_allow_html=True)
-        if 'full_report' in st.session_state:
-            rep = st.session_state.full_report
-            st.markdown(f"### {rep.headline}")
-            st.info(f"**Verdict:** {rep.ai_verdict}")
-            st.markdown(rep.summary)
-            with st.expander("Detailed Risk Analysis"):
-                st.write(rep.risk_analysis)
-            
-            # Allocation Chart
-            fig_pie = px.pie(df, values='total_evaluation_value', names='category', hole=0.6)
-            fig_pie.update_layout(height=300, margin=dict(t=30,b=0,l=0,r=0), template="plotly_dark")
-            st.plotly_chart(fig_pie, use_container_width=True)
+        st.markdown("<p class='panel-header'>🧠 AI Strategy Intelligence (CrewAI)</p>", unsafe_allow_html=True)
+        if 'crew_report' in st.session_state:
+            st.markdown("### 📊 FinanceCrew Analysis Report")
+            st.markdown(st.session_state.crew_report)
+
+            # Allocation Chart (if data available)
+            if 'category' in df.columns and 'total_evaluation_value' in df.columns:
+                fig_pie = px.pie(df, values='total_evaluation_value', names='category', hole=0.6)
+                fig_pie.update_layout(height=300, margin=dict(t=30,b=0,l=0,r=0), template="plotly_dark")
+                st.plotly_chart(fig_pie, use_container_width=True)
         else:
-            st.info("사령부 보고서를 생성하려면 좌측의 [Run Full Audit]을 클릭하십시오.")
+            st.info("📋 Click [Run Full Audit (CrewAI)] to generate AI-powered portfolio analysis.")
 
     # [우측: Action]
     with col_action:
         st.markdown("<p class='panel-header'>🚀 Action Center</p>", unsafe_allow_html=True)
-        if 'full_report' in st.session_state:
-            rep = st.session_state.full_report
-            for item in rep.action_plan:
-                with st.container(border=True):
-                    st.markdown(f"**{item.action} {item.ticker}** ({item.amount})")
-                    st.caption(item.reason)
-            
+        if 'crew_report' in st.session_state:
+            st.markdown("**📌 Next Steps**")
+            st.info("Review the AI Strategy Intelligence report for actionable recommendations.")
+
+            # Display basic metrics if available
+            if 'risk_data' in st.session_state:
+                rd = st.session_state.risk_data
+                if 'beta' in rd:
+                    st.metric("Portfolio Beta", f"{rd.get('beta', 0):.2f}")
+
             st.markdown("---")
-            st.markdown("**⚠️ Macro Alerts**")
-            for alert in rep.macro_alerts:
-                st.warning(alert)
+            st.markdown("**💡 CrewAI Workflow**")
+            st.caption("✓ Data synchronized")
+            st.caption("✓ Metrics calculated")
+            st.caption("✓ Risks assessed")
+            st.caption("✓ Strategy generated")
 
     # --- 6. Bottom Table ---
     st.divider()
@@ -126,7 +141,15 @@ if not df.empty:
     AgGrid(df, gridOptions=gridOptions, theme='alpine', height=400, allow_unsafe_jscode=True)
 
 else:
-    st.warning("데이터가 없습니다. 사이드바에서 동기화를 진행하십시오.")
-    if st.sidebar.button("🔄 First Sync"):
-        st.session_state.pm.sync_all()
-        st.rerun()
+    st.warning("📊 No portfolio data loaded yet.")
+    st.info("Click the button below to run your first analysis with FinanceCrew (CrewAI)")
+
+    if st.button("🚀 Run First Analysis", use_container_width=True):
+        with st.spinner("Running FinanceCrew..."):
+            result = st.session_state.finance_crew.generate_full_report()
+
+            if result['success']:
+                st.success("✅ Analysis completed! Refresh page to view results.")
+                st.rerun()
+            else:
+                st.error(f"❌ Error: {result.get('message', 'Unknown error')}")
