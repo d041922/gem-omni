@@ -1,0 +1,436 @@
+---
+alwaysApply: true
+---
+
+# CrewAI Coding Standards
+
+## Agent Development
+
+### Naming Conventions
+
+- Agent files: `{domain}_{role}_agent.py` (e.g., `data_sync_agent.py`)
+- Agent variable: lowercase with underscores (e.g., `data_sync_agent`)
+- Use descriptive, role-based names
+
+### Agent Structure
+
+```python
+from crewai import Agent
+from agents.tools.xyz import SomeTool
+
+def create_{agent_name}() -> Agent:
+    """
+    Creates a {AgentName}
+
+    This agent is responsible for:
+    - Responsibility 1
+    - Responsibility 2
+    """
+    return Agent(
+        role="Specific Job Title",
+        goal="Clear, measurable objective",
+        backstory="""Detailed professional background with:
+        - Years of experience
+        - Companies worked at
+        - Specific expertise
+        - Work style and values""",
+        tools=[SomeTool()],
+        verbose=True,
+        allow_delegation=False
+    )
+
+# Create singleton instance
+agent_name = create_{agent_name}()
+```
+
+### Agent Best Practices
+
+1. **Single Responsibility**: One agent = one job
+2. **Clear Role**: Use professional job titles
+3. **Measurable Goal**: What success looks like
+4. **Rich Backstory**: 3-5 sentences with specific details
+5. **Appropriate Tools**: Only tools needed for the role
+6. **No Delegation by Default**: Set to False unless needed
+
+## Tool Development
+
+### Naming Conventions
+
+- Tool files: `{domain}_tools.py` (e.g., `portfolio_tools.py`)
+- Tool class: `{Action}{Domain}Tool` (e.g., `CalculatePortfolioMetricsTool`)
+- Input class: `{ToolName}Input`
+
+### Tool Structure
+
+```python
+from crewai_tools import BaseTool
+from typing import Type, Dict, Any
+from pydantic import BaseModel, Field
+
+class MyToolInput(BaseModel):
+    """Input schema for MyTool"""
+    param1: str = Field(..., description="What this parameter is for")
+    param2: int = Field(default=0, description="Optional parameter")
+
+class MyTool(BaseTool):
+    name: str = "Action Description"
+    description: str = (
+        "Detailed explanation of what this tool does. "
+        "Include when to use it and what it returns. "
+        "Be specific so agents know when to use this tool."
+    )
+    args_schema: Type[BaseModel] = MyToolInput
+
+    def _run(self, param1: str, param2: int = 0) -> Dict[str, Any]:
+        """
+        Brief description
+
+        Args:
+            param1: Description of param1
+            param2: Description of param2
+
+        Returns:
+            Dictionary with success, data, and message fields
+        """
+        try:
+            # Implementation
+            result = do_something(param1, param2)
+
+            return {
+                "success": True,
+                "data": result,
+                "message": "Successfully completed action"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "message": f"Failed to complete action: {str(e)}"
+            }
+```
+
+### Tool Best Practices
+
+1. **Consistent Output**: Always return dict with success/message
+2. **Error Handling**: Never let exceptions escape
+3. **Clear Description**: Agents rely on this to decide when to use tool
+4. **Type Safety**: Use Pydantic models for inputs
+5. **Helpful Errors**: Include actionable error messages
+
+## Crew Development
+
+### Naming Conventions
+
+- Crew files: `{domain}_crew.py` (e.g., `finance_crew.py`)
+- Crew class: `{Domain}Crew` (e.g., `FinanceCrew`)
+- Task variables: `{action}_task` (e.g., `sync_task`)
+
+### Crew Structure
+
+```python
+from crewai import Crew, Task, Process
+from agents.crewai_agents.agent1 import agent1
+from agents.crewai_agents.agent2 import agent2
+
+class DomainCrew:
+    """
+    DomainCrew: Brief description
+
+    This crew orchestrates:
+    1. First responsibility
+    2. Second responsibility
+    3. Third responsibility
+    """
+
+    def __init__(self, memory_system=None, **kwargs):
+        """Initialize crew with configuration"""
+        self.memory = memory_system
+
+        # Define tasks
+        self.task1 = Task(
+            description="""Clear, detailed instructions:
+1. Step 1
+2. Step 2
+3. Step 3
+
+Expected output format: ...
+""",
+            agent=agent1,
+            expected_output="Specific output format"
+        )
+
+        self.task2 = Task(
+            description="""...""",
+            agent=agent2,
+            expected_output="...",
+            context=[self.task1]  # Receives task1 output
+        )
+
+        # Create crew
+        self.crew = Crew(
+            agents=[agent1, agent2],
+            tasks=[self.task1, self.task2],
+            verbose=True,
+            process=Process.sequential,
+            memory=False
+        )
+
+    def execute_workflow(self) -> Dict[str, Any]:
+        """Execute the full workflow"""
+        try:
+            result = self.crew.kickoff()
+            return {
+                "success": True,
+                "result": str(result),
+                "message": "Workflow completed successfully"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "message": f"Workflow failed: {str(e)}"
+            }
+```
+
+### Crew Best Practices
+
+1. **Sequential by Default**: Use Process.sequential unless you need hierarchy
+2. **Clear Task Order**: Order tasks logically (data → analysis → report)
+3. **Task Context**: Use context parameter to pass data between tasks
+4. **Error Handling**: Wrap crew.kickoff() in try/except
+5. **Memory Management**: Disable built-in memory if using custom system
+
+## Task Description Guidelines
+
+### Good Task Descriptions
+
+```python
+description="""
+Load and synchronize portfolio data:
+
+1. Fetch data from Google Sheets spreadsheet "MyPortfolio"
+2. Download real-time prices from Yahoo Finance API
+3. Merge data and handle missing values
+4. Validate that all tickers have current prices
+
+Return a JSON object with:
+- portfolio: list of holdings
+- last_updated: timestamp
+- data_quality_score: 0-100
+"""
+```
+
+### Bad Task Descriptions
+
+```python
+# Too vague
+description="Get the portfolio data"
+
+# Too complex
+description="Do everything related to portfolio analysis including data loading, cleaning, merging, calculating returns, risk metrics, correlations, generating reports, and sending emails"
+
+# No output format
+description="Analyze the portfolio"
+```
+
+### Task Description Template
+
+```
+{Action} {Object}:
+
+1. Step 1 (be specific)
+2. Step 2 (include details)
+3. Step 3 (mention data sources)
+
+{Optional: Handle edge cases like...}
+
+Return {format} with:
+- field1: description
+- field2: description
+```
+
+## Integration Standards
+
+### Registering Crews in Main
+
+```python
+# main.py
+from agents.crews.finance_crew import FinanceCrew
+
+class GeminiOmniSystem:
+    def _register_agents(self):
+        self.agents['finance'] = FinanceCrew(
+            memory_system=self.memory,
+            spreadsheet_name="GEM_Finance_Portfolio"
+        )
+        logger.info("Agent registered: FinanceCrew")
+```
+
+### Using Crews
+
+```python
+# In route_request or similar
+crew = self.agents.get('finance')
+if crew:
+    result = crew.execute_workflow()
+    if result['success']:
+        # Handle success
+        print(result['result'])
+    else:
+        # Handle error
+        logger.error(result['message'])
+```
+
+## Testing Standards
+
+### Tool Testing
+
+```python
+def test_my_tool():
+    tool = MyTool()
+    result = tool._run(param1="test")
+
+    assert result['success'] == True
+    assert 'data' in result
+    assert result['message'] != ""
+```
+
+### Agent Testing
+
+```python
+def test_agent_creation():
+    agent = create_my_agent()
+
+    assert agent.role != ""
+    assert agent.goal != ""
+    assert len(agent.tools) > 0
+```
+
+### Crew Testing
+
+```python
+def test_crew_workflow():
+    crew = MyCrew(memory_system=None)
+    result = crew.execute_workflow()
+
+    assert result['success'] == True
+    # Add more specific assertions
+```
+
+## Documentation Standards
+
+### Agent Documentation
+
+Each agent file should have:
+- Module docstring explaining purpose
+- Agent responsibility list
+- Example usage
+
+### Tool Documentation
+
+Each tool file should have:
+- Module docstring
+- Tool purpose and use cases
+- Input/output examples
+
+### Crew Documentation
+
+Each crew file should have:
+- Workflow diagram (ASCII art)
+- Task descriptions
+- Data flow explanation
+- Usage examples
+
+## Common Pitfalls
+
+### ❌ Don't Do This
+
+```python
+# Overly complex agent
+agent = Agent(
+    role="Do Everything Agent",
+    goal="Handle all tasks",
+    tools=[Tool1(), Tool2(), Tool3(), Tool4(), Tool5()]
+)
+
+# Vague task
+task = Task(
+    description="Analyze stuff",
+    agent=agent
+)
+
+# No error handling
+def _run(self):
+    result = risky_operation()  # Can throw exception
+    return result  # Wrong format
+
+# Unclear tool description
+description = "Does something with data"
+```
+
+### ✅ Do This Instead
+
+```python
+# Focused agent
+data_agent = Agent(
+    role="Data Synchronization Specialist",
+    goal="Accurately load and validate data",
+    tools=[DataLoaderTool()]
+)
+
+# Clear task
+task = Task(
+    description="""
+    Load portfolio data from source X.
+    Validate data quality.
+    Return JSON with portfolio array.
+    """,
+    agent=data_agent,
+    expected_output="JSON object with portfolio data"
+)
+
+# Proper error handling
+def _run(self):
+    try:
+        result = risky_operation()
+        return {
+            "success": True,
+            "data": result,
+            "message": "Operation completed"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Operation failed: {str(e)}"
+        }
+
+# Clear tool description
+description = (
+    "Loads portfolio data from Google Sheets. "
+    "Returns portfolio holdings with current prices. "
+    "Use this when you need to fetch latest portfolio data."
+)
+```
+
+## Performance Guidelines
+
+1. **Cache Expensive Operations**: Use @st.cache_data or similar
+2. **Limit Historical Data**: Don't download years of data unnecessarily
+3. **Parallel Tool Calls**: CrewAI can parallelize tool calls
+4. **Choose Right Model**: Use Gemini Flash for speed, Pro for quality
+5. **Monitor Token Usage**: Verbose backstories use more tokens
+
+## Security Guidelines
+
+1. **Never Hardcode Secrets**: Use environment variables
+2. **Validate Tool Inputs**: Use Pydantic models
+3. **Sanitize User Input**: Before passing to tools
+4. **Limit Tool Permissions**: Only give necessary access
+5. **Log Security Events**: Track API calls, data access
+
+## References
+
+- [CrewAI Documentation](https://docs.crewai.com/)
+- [Project Architecture](../docs/ARCHITECTURE.md)
+- [CrewAI Guide](../docs/CREWAI_GUIDE.md)
