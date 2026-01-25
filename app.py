@@ -187,9 +187,9 @@ else:
                             "cost_krw": float(cost),
                             "value_krw": float(value),
                             "profit_krw": float(profit),
-                            "return_pct": float(returns),
-                            "portfolio_weight_pct": float(value_pct),
-                            "upside_pct": float(upside)
+                            "return_pct": float(returns or 0),
+                            "portfolio_weight_pct": float(value_pct or 0),
+                            "upside_pct": float(upside or 0)
                         })
 
                     holdings_text = '\n'.join([
