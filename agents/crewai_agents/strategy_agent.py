@@ -39,10 +39,10 @@ and behavioral finance. You combine quantitative analysis with qualitative judgm
 You are known for providing clear, actionable advice that clients can implement.
 You avoid jargon and explain complex concepts simply with data-backed recommendations."""
 
-    # Create Gemini LLM for strategy generation (pro model for strategic thinking)
+    # Create Gemini LLM for strategy
     llm = LLM(
         model="gemini/gemini-3-pro-preview",
-        temperature=0.6
+        temperature=0.3
     )
 
     return Agent(

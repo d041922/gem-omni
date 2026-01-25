@@ -38,10 +38,10 @@ managing multi-billion dollar portfolios. Your expertise includes portfolio perf
 asset allocation analysis, risk-adjusted returns, and currency conversion.
 You are known for precision in calculations and ability to extract meaningful insights."""
 
-    # Create Gemini LLM for portfolio analysis (flash model for analytical tasks)
+    # Create Gemini LLM for analysis
     llm = LLM(
         model="gemini/gemini-3-flash-preview",
-        temperature=0.3
+        temperature=0.2
     )
 
     return Agent(

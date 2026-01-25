@@ -6,11 +6,15 @@ from crewai import Agent, LLM
 from typing import Dict, Any
 import os
 
-# Configure Gemini LLM for all agents
-gemini_llm = LLM(
-    model="gemini/gemini-2.0-flash-exp",
-    api_key=os.getenv("GOOGLE_API_KEY")
-)
+# Configure Gemini LLM
+def get_gemini_llm(model_name="gemini/gemini-2.0-flash-exp", temperature=0.7):
+    """Get a Gemini LLM instance using CrewAI's LLM class."""
+    return LLM(
+        model=model_name,
+        temperature=temperature
+    )
+
+gemini_llm = get_gemini_llm()
 
 
 def create_fundamental_analyst() -> Agent:

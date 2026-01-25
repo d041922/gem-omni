@@ -39,10 +39,10 @@ Your expertise includes portfolio beta and factor models, correlation analysis, 
 and Modern Portfolio Theory optimization. You always consider tail risks and worst-case scenarios.
 Your motto: "Hope for the best, prepare for the worst." You provide clear risk metrics and actionable strategies."""
 
-    # Create Gemini LLM for risk analysis (pro model for complex analysis)
+    # Create Gemini LLM for risk analysis
     llm = LLM(
         model="gemini/gemini-3-pro-preview",
-        temperature=0.2
+        temperature=0.1
     )
 
     return Agent(
