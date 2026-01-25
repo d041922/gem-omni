@@ -35,11 +35,12 @@ def check_password():
         submit = st.form_submit_button("Login")
         
         if submit:
-            target_password = st.secrets.get("APP_PASSWORD")
-            # secrets에 없을 경우를 대비한 디버깅 (값은 노출 안 함)
+            # Check for both 'password' and 'APP_PASSWORD' (case-insensitive fallback)
+            target_password = st.secrets.get("password") or st.secrets.get("APP_PASSWORD")
+            
             if target_password is None:
-                st.warning("Warning: APP_PASSWORD not found in secrets. Contact admin.")
-                target_password = "admin1234" # Fallback
+                st.warning("Warning: Password key not found in secrets. Using default.")
+                target_password = "admin1234"
             
             if password == str(target_password):
                 st.session_state.authenticated = True
