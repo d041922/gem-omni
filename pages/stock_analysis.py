@@ -79,7 +79,7 @@ def render_stock_analysis_page():
             key='stock_period'
         )
 
-    analyze_button = st.button("🚀 종목 분석", use_container_width=True, type="primary")
+    analyze_button = st.button("🚀 종목 분석", width="stretch", type="primary")
 
     # Check if we have existing analysis in session state
     show_results = False
@@ -104,7 +104,7 @@ def render_stock_analysis_page():
         example_cols = st.columns(5)
         examples = ["AAPL", "NVDA", "MSFT", "TSLA", "GOOGL"]
         for idx, ex_ticker in enumerate(examples):
-            if example_cols[idx].button(ex_ticker, use_container_width=True, key=f"ex_us_{ex_ticker}"):
+            if example_cols[idx].button(ex_ticker, width="stretch", key=f"ex_us_{ex_ticker}"):
                 st.session_state.last_ticker = ex_ticker
                 st.session_state.last_period = "1y"
                 st.rerun()
@@ -120,7 +120,7 @@ def render_stock_analysis_page():
             ("LG에너지", "373220.KS")
         ]
         for idx, (name, ticker) in enumerate(kr_examples):
-            if kr_cols[idx].button(name, use_container_width=True, key=f"ex_kr_{ticker}"):
+            if kr_cols[idx].button(name, width="stretch", key=f"ex_kr_{ticker}"):
                 st.session_state.last_ticker = ticker
                 st.session_state.last_period = "1y"
                 st.rerun()
@@ -241,19 +241,19 @@ def render_stock_analysis_page():
 
         col_refresh, col_switch = st.columns([1, 1])
         with col_refresh:
-            if st.button("🔄 AI 분석 새로고침", use_container_width=True):
+            if st.button("🔄 AI 분석 새로고침", width="stretch"):
                 del st.session_state.ai_stock_analysis
                 del st.session_state.ai_analysis_mode
                 st.rerun()
         with col_switch:
             current_mode = st.session_state.ai_analysis_mode
             other_mode = "멀티에이전트" if "단일" in current_mode else "단일 AI"
-            if st.button(f"🔄 {other_mode}로 재분석", use_container_width=True):
+            if st.button(f"🔄 {other_mode}로 재분석", width="stretch"):
                 del st.session_state.ai_stock_analysis
                 del st.session_state.ai_analysis_mode
                 st.rerun()
     else:
-        if st.button("🤖 AI 투자 의견 생성", use_container_width=True, type="primary"):
+        if st.button("🤖 AI 투자 의견 생성", width="stretch", type="primary"):
             # Single AI Analysis
             if "단일" in analysis_mode:
                 with st.spinner("⏳ AI 분석 중... (약 5초 소요)"):
@@ -381,7 +381,7 @@ def render_price_chart(df: pd.DataFrame, ticker: str):
     fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#30363D')
     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#30363D')
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def render_technical_indicators(summary: dict):

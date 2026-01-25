@@ -203,7 +203,7 @@ else:
         # [좌측: Health]
         with col_health:
             st.markdown("<p class='panel-header'>🛡️ Portfolio Health</p>", unsafe_allow_html=True)
-            if st.button("🔍 Run AI Analysis", use_container_width=True, type="primary"):
+            if st.button("🔍 Run AI Analysis", width="stretch", type="primary"):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
     
@@ -378,7 +378,7 @@ else:
                     fig_pie = px.pie(sector_data, names='카테고리', values='평가금액(KRW)',
                                     title="섹터 분산", hole=0.5)
                     fig_pie.update_layout(height=280, margin=dict(t=40,b=0,l=0,r=0), template="plotly_dark")
-                    st.plotly_chart(fig_pie, use_container_width=True)
+                    st.plotly_chart(fig_pie, width="stretch")
 
                 # Top 10 bar chart
                 if '종목명' in result_df.columns:
@@ -391,7 +391,7 @@ else:
                     fig_bar.update_layout(title="Top 10 종목", yaxis_title="백만원",
                                          height=280, template="plotly_dark",
                                          margin=dict(t=40,b=0,l=0,r=0), showlegend=False)
-                    st.plotly_chart(fig_bar, use_container_width=True)
+                    st.plotly_chart(fig_bar, width="stretch")
     
         # [우측: Quick Stats]
         with col_action:
@@ -445,18 +445,18 @@ else:
                 if '수익률(%)' in display_df.columns:
                     display_df['수익률(%)'] = display_df['수익률(%)'].apply(lambda x: f"{x:.2f}%")
     
-                st.dataframe(display_df, use_container_width=True, height=400)
+                st.dataframe(display_df, width="stretch", height=400)
             else:
-                st.dataframe(result_df, use_container_width=True, height=400)
+                st.dataframe(result_df, width="stretch", height=400)
         else:
             # Fallback to raw data
-            st.dataframe(df, use_container_width=True, height=400)
+            st.dataframe(df, width="stretch", height=400)
     
     else:
         st.warning("📊 No portfolio data loaded yet.")
         st.info("Click the button below to run your first analysis with FinanceCrew (CrewAI)")
     
-        if st.button("🚀 Run First Analysis", use_container_width=True):
+        if st.button("🚀 Run First Analysis", width="stretch"):
             with st.spinner("Running FinanceCrew..."):
                 result = st.session_state.finance_crew.generate_full_report()
     
