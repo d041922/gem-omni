@@ -104,11 +104,22 @@ class AgentBriefing:
                 "content": "VIX 지수가 높습니다. 공격적인 매수보다는 보유 종목의 손절선(PSAR)을 점검하고 보수적으로 대응하세요."
             })
 
-        # 4. 종합 요약 문구
+        # 4. 종합 요약 문구 개선
         if not nudges:
-            summary = "현재 포트폴리오는 매우 안정적입니다. 시장의 새로운 기회를 모니터링하고 있습니다."
+            if self.portfolio.empty:
+                summary = "데이터 로딩 중이거나 포트폴리오가 비어 있습니다. '포트폴리오 관리'에서 데이터를 불러와 주세요."
+            else:
+                total_profit = self.portfolio['손익(KRW)'].sum() if '손익(KRW)' in self.portfolio.columns else 0
+                avg_return = self.portfolio['수익률(%)'].mean() if '수익률(%)' in self.portfolio.columns else 0
+                
+                if total_profit < 0:
+                    summary = f"현재 포트폴리오가 전체적으로 **₩{abs(total_profit)/1e4:.0f}만원 손실** 중입니다. 시장 반등을 기다리며 리스크 관리 위주로 대응이 필요합니다."
+                elif avg_return < -5:
+                    summary = "평균 수익률이 부진합니다. 종목 교체나 섹터 비중 조절을 검토할 시기입니다."
+                else:
+                    summary = "현재 포트폴리오는 표면적으로 안정적이나, 추가적인 알파 수익 창출을 위한 종목 발굴이 필요합니다."
         else:
-            summary = f"오늘 마스터를 위해 {len(nudges)}개의 전략적 제안이 준비되었습니다. 현금 운용과 리스크 관리에 주목하세요."
+            summary = f"오늘 마스터를 위해 {len(nudges)}개의 전략적 제안이 준비되었습니다. 특히 리스크 관리와 익절 전략에 주목하세요."
 
         return {
             "summary": summary,
