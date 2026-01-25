@@ -6,7 +6,6 @@ from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from core.memory import MemorySystem
 from agents.crews.finance_crew import FinanceCrew
 from pages.stock_analysis import render_stock_analysis_page
-from pages.settings import render_settings_page
 import yfinance as yf
 from datetime import datetime, timedelta
 
@@ -47,7 +46,7 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    options=["📊 Portfolio Dashboard", "🔍 Stock Analysis", "⚙️ Settings"],
+    options=["📊 Portfolio Dashboard", "🔍 Stock Analysis"],
     index=0
 )
 
@@ -151,9 +150,6 @@ st.divider()
 # --- 5. Page Router ---
 if page == "🔍 Stock Analysis":
     render_stock_analysis_page()
-
-elif page == "⚙️ Settings":
-    render_settings_page()
 
 else:
     # Render Portfolio Dashboard (Default)

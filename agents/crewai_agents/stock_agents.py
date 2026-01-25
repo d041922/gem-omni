@@ -2,8 +2,15 @@
 Stock Analysis Agents (Multi-Agent System)
 Specialized agents for deep stock analysis with debate mechanism
 """
-from crewai import Agent
+from crewai import Agent, LLM
 from typing import Dict, Any
+import os
+
+# Configure Gemini LLM for all agents
+gemini_llm = LLM(
+    model="gemini/gemini-2.0-flash-exp",
+    api_key=os.getenv("GOOGLE_API_KEY")
+)
 
 
 def create_fundamental_analyst() -> Agent:
@@ -34,6 +41,7 @@ def create_fundamental_analyst() -> Agent:
         - 매수/보유/매도 의견과 목표가를 수치적 근거와 함께 제시
         - 다른 에이전트의 의견에 펀더멘털 관점에서 반박 또는 동의
         """,
+        llm=gemini_llm,
         verbose=True,
         allow_delegation=False
     )
