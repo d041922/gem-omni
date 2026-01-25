@@ -439,31 +439,155 @@ else:
             else:
                 st.info("👆 Click 'Run AI Analysis' to get AI-powered insights")
     
-            # Charts
+            # Charts with tabs
             st.divider()
             if 'calculated_portfolio' in st.session_state:
                 result_df = st.session_state.calculated_portfolio
 
-                # Sector pie chart
-                if '카테고리' in result_df.columns:
-                    sector_data = result_df.groupby('카테고리')['평가금액(KRW)'].sum().reset_index()
-                    fig_pie = px.pie(sector_data, names='카테고리', values='평가금액(KRW)',
-                                    title="섹터 분산", hole=0.5)
-                    fig_pie.update_layout(height=280, margin=dict(t=40,b=0,l=0,r=0), template="plotly_dark")
-                    st.plotly_chart(fig_pie, width="stretch")
+                # Calculate Core/Satellite classification
+                core_keywords = ['SPY', 'VOO', 'QQQ', 'VTI', 'SCHD', 'VYM', 'MSFT', 'AAPL', 'JNJ', 'PG', 'KO']
+                satellite_keywords = ['NVDA', 'AMD', 'TSM', 'TSMC', 'SMCI', 'PLTR', 'CRSP', 'EDIT', 'BEAM',
+                                     '005930', '000660', 'ARKK', 'SMH', 'SOXX']
 
-                # Top 10 bar chart
-                if '종목명' in result_df.columns:
-                    top_10 = result_df.nlargest(10, '평가금액(KRW)')
-                    colors = ['#FF6B6B' if x < 0 else '#4ECDC4' for x in top_10.get('수익률(%)', [0]*len(top_10))]
-                    fig_bar = go.Figure(go.Bar(x=top_10['종목명'], y=top_10['평가금액(KRW)']/1e6,
-                                              marker_color=colors,
-                                              text=[f"{x:.1f}%" for x in top_10.get('수익률(%)', [0]*len(top_10))],
-                                              textposition='outside'))
-                    fig_bar.update_layout(title="Top 10 종목", yaxis_title="백만원",
-                                         height=280, template="plotly_dark",
-                                         margin=dict(t=40,b=0,l=0,r=0), showlegend=False)
-                    st.plotly_chart(fig_bar, width="stretch")
+                def classify_asset(ticker, category):
+                    if any(kw in str(ticker) for kw in core_keywords):
+                        return 'Core'
+                    elif any(kw in str(ticker) for kw in satellite_keywords):
+                        return 'Satellite'
+                    else:
+                        cat = str(category).lower()
+                        if 'etf' in cat or 'index' in cat or '배당' in cat:
+                            return 'Core'
+                        else:
+                            return 'Satellite'
+
+                result_df['asset_type'] = result_df.apply(
+                    lambda row: classify_asset(
+                        row.get('티커코드', row.get('종목코드', '')),
+                        row.get('카테고리', '')
+                    ), axis=1
+                )
+
+                # Create tabs for different charts
+                chart_tabs = st.tabs(["📊 Core-Satellite", "🎯 수익률", "🏦 계좌별", "📈 섹터별"])
+
+                # Tab 1: Core vs Satellite
+                with chart_tabs[0]:
+                    cs_data = result_df.groupby('asset_type')['평가금액(KRW)'].sum().reset_index()
+                    total_val = cs_data['평가금액(KRW)'].sum()
+                    cs_data['비중%'] = (cs_data['평가금액(KRW)'] / total_val * 100).round(1)
+
+                    fig_cs = go.Figure(data=[go.Pie(
+                        labels=cs_data['asset_type'],
+                        values=cs_data['평가금액(KRW)'],
+                        hole=0.5,
+                        marker=dict(colors=['#58A6FF', '#FF6B6B']),
+                        text=cs_data['비중%'].apply(lambda x: f'{x:.1f}%'),
+                        textposition='inside',
+                        textinfo='label+text'
+                    )])
+                    fig_cs.update_layout(
+                        title="Core vs Satellite 비중",
+                        height=280,
+                        margin=dict(t=40,b=0,l=0,r=0),
+                        template="plotly_dark",
+                        showlegend=False
+                    )
+                    st.plotly_chart(fig_cs, use_container_width=True)
+
+                    # Show target vs actual
+                    core_pct = cs_data[cs_data['asset_type'] == 'Core']['비중%'].values[0] if 'Core' in cs_data['asset_type'].values else 0
+                    sat_pct = cs_data[cs_data['asset_type'] == 'Satellite']['비중%'].values[0] if 'Satellite' in cs_data['asset_type'].values else 0
+
+                    col_cs1, col_cs2 = st.columns(2)
+                    col_cs1.metric("Core", f"{core_pct:.1f}%",
+                                  "✅ OK" if 50 <= core_pct <= 60 else "⚠️ 조정 필요")
+                    col_cs2.metric("Satellite", f"{sat_pct:.1f}%",
+                                  "✅ OK" if 40 <= sat_pct <= 50 else "⚠️ 조정 필요")
+                    st.caption("목표: Core 50-60%, Satellite 40-50%")
+
+                # Tab 2: Top/Bottom performers
+                with chart_tabs[1]:
+                    if '종목명' in result_df.columns:
+                        top_5 = result_df.nlargest(5, '수익률(%)')
+                        bottom_5 = result_df.nsmallest(5, '수익률(%)')
+
+                        fig_perf = go.Figure()
+                        fig_perf.add_trace(go.Bar(
+                            x=top_5['종목명'],
+                            y=top_5['수익률(%)'],
+                            name='Top 5',
+                            marker_color='#4ECDC4',
+                            text=top_5['수익률(%)'].apply(lambda x: f'{x:.1f}%'),
+                            textposition='outside'
+                        ))
+                        fig_perf.add_trace(go.Bar(
+                            x=bottom_5['종목명'],
+                            y=bottom_5['수익률(%)'],
+                            name='Bottom 5',
+                            marker_color='#FF6B6B',
+                            text=bottom_5['수익률(%)'].apply(lambda x: f'{x:.1f}%'),
+                            textposition='outside'
+                        ))
+                        fig_perf.update_layout(
+                            title="수익률 상위/하위 종목",
+                            yaxis_title="수익률 (%)",
+                            height=280,
+                            template="plotly_dark",
+                            margin=dict(t=40,b=20,l=0,r=0),
+                            showlegend=True,
+                            barmode='group'
+                        )
+                        st.plotly_chart(fig_perf, use_container_width=True)
+
+                # Tab 3: By account
+                with chart_tabs[2]:
+                    if '계좌' in result_df.columns:
+                        account_data = result_df.groupby('계좌')['평가금액(KRW)'].sum().reset_index()
+                        account_data = account_data.sort_values('평가금액(KRW)', ascending=False)
+
+                        fig_acc = go.Figure(data=[go.Bar(
+                            x=account_data['계좌'],
+                            y=account_data['평가금액(KRW)'] / 1e6,
+                            marker_color='#58A6FF',
+                            text=account_data['평가금액(KRW)'].apply(lambda x: f'₩{x/1e6:.0f}M'),
+                            textposition='outside'
+                        )])
+                        fig_acc.update_layout(
+                            title="계좌별 자산 분산",
+                            yaxis_title="평가금액 (백만원)",
+                            height=280,
+                            template="plotly_dark",
+                            margin=dict(t=40,b=20,l=0,r=0),
+                            showlegend=False
+                        )
+                        st.plotly_chart(fig_acc, use_container_width=True)
+                    else:
+                        st.info("계좌 정보가 없습니다")
+
+                # Tab 4: By sector
+                with chart_tabs[3]:
+                    if '카테고리' in result_df.columns:
+                        sector_data = result_df.groupby('카테고리')['평가금액(KRW)'].sum().reset_index()
+                        sector_data = sector_data.sort_values('평가금액(KRW)', ascending=True)
+
+                        fig_sector = go.Figure(data=[go.Bar(
+                            y=sector_data['카테고리'],
+                            x=sector_data['평가금액(KRW)'] / 1e6,
+                            orientation='h',
+                            marker_color='#FF6B6B',
+                            text=sector_data['평가금액(KRW)'].apply(lambda x: f'₩{x/1e6:.0f}M'),
+                            textposition='outside'
+                        )])
+                        fig_sector.update_layout(
+                            title="섹터별 자산 분산",
+                            xaxis_title="평가금액 (백만원)",
+                            height=280,
+                            template="plotly_dark",
+                            margin=dict(t=40,b=20,l=0,r=0),
+                            showlegend=False
+                        )
+                        st.plotly_chart(fig_sector, use_container_width=True)
     
         # [우측: Quick Stats]
         with col_action:
