@@ -13,6 +13,36 @@ from datetime import datetime, timedelta
 # --- 1. Page Config ---
 st.set_page_config(page_title="GEM: OMNI Command Center", page_icon="💎", layout="wide", initial_sidebar_state="expanded")
 
+# --- Authentication Logic ---
+def check_password():
+    """Returns True if the user had the correct password."""
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if st.session_state.authenticated:
+        return True
+
+    # Show login form
+    st.markdown("""
+        <div style='display: flex; justify-content: center; align-items: center; height: 300px; flex-direction: column;'>
+            <h1 style='color: #58A6FF;'>💎 GEM: OMNI</h1>
+            <p style='color: #8B949E;'>Master, please verify your identity.</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    password = st.text_input("Password", type="password", key="login_pwd")
+    if st.button("Login"):
+        if password == st.secrets.get("APP_PASSWORD", "admin1234"): # Default for safety
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Invalid password. Access denied.")
+    
+    return False
+
+if not check_password():
+    st.stop()  # Stop execution until authenticated
+
 # --- 2. Custom CSS (Unified Professional Theme) ---
 st.markdown("""
     <style>
