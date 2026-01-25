@@ -264,12 +264,38 @@ def render_stock_analysis_page():
 
             # Multi-Agent Analysis
             else:
-                with st.spinner("⏳ 멀티에이전트 분석 중...\n\n3명의 전문가가 토론하고 있습니다... (약 30초 소요)"):
+                with st.spinner("⏳ 멀티에이전트 분석 중...\n\n4명의 전문가가 토론하고 있습니다... (약 30초 소요)"):
                     try:
+                        # Load portfolio data for Risk Control Agent
+                        portfolio_data = None
+                        try:
+                            from skills.gsheet_loader import load_data_from_gsheet
+                            portfolio_df, _, _ = load_data_from_gsheet("GEM_Finance_Portfolio")
+
+                            if not portfolio_df.empty:
+                                holdings = []
+                                total_value = portfolio_df['평가금액(KRW)'].sum() if '평가금액(KRW)' in portfolio_df.columns else 0
+
+                                for _, row in portfolio_df.iterrows():
+                                    holdings.append({
+                                        'ticker': row.get('종목코드', row.get('티커코드', '')),
+                                        'name': row.get('종목명', ''),
+                                        'sector': row.get('카테고리', 'Unknown'),
+                                        'value_pct': (row.get('평가금액(KRW)', 0) / total_value * 100) if total_value > 0 else 0
+                                    })
+
+                                portfolio_data = {
+                                    'holdings': holdings,
+                                    'total_value': total_value
+                                }
+                        except:
+                            pass  # If portfolio load fails, continue without it
+
                         ai_analysis = run_stock_analysis(
                             ticker=analysis_result['ticker'],
                             analysis_data=analysis_result['summary'],
-                            data_file_path=analysis_result['data_file']
+                            data_file_path=analysis_result['data_file'],
+                            portfolio_data=portfolio_data
                         )
                         st.session_state.ai_stock_analysis = ai_analysis
                         st.session_state.ai_analysis_mode = analysis_mode

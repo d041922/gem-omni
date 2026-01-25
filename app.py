@@ -6,6 +6,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from core.memory import MemorySystem
 from agents.crews.finance_crew import FinanceCrew
 from pages.stock_analysis import render_stock_analysis_page
+from pages.settings import render_settings_page
 import yfinance as yf
 from datetime import datetime, timedelta
 
@@ -46,7 +47,7 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    options=["📊 Portfolio Dashboard", "🔍 Stock Analysis"],
+    options=["📊 Portfolio Dashboard", "🔍 Stock Analysis", "⚙️ Settings"],
     index=0
 )
 
@@ -149,8 +150,10 @@ st.divider()
 
 # --- 5. Page Router ---
 if page == "🔍 Stock Analysis":
-    # Render Single Stock Analysis Page
     render_stock_analysis_page()
+
+elif page == "⚙️ Settings":
+    render_settings_page()
 
 else:
     # Render Portfolio Dashboard (Default)
@@ -368,20 +371,31 @@ else:
             else:
                 st.info("👆 Click 'Run AI Analysis' to get AI-powered insights")
     
-            # Allocation Chart
-            if 'category' in df.columns and '카테고리' in df.columns:
-                category_col = '카테고리'
-            elif 'category' in df.columns:
-                category_col = 'category'
-            else:
-                category_col = None
-    
-            if category_col and '수량' in df.columns:
-                fig_pie = px.pie(df, names=category_col, title="Portfolio Allocation", hole=0.6)
-                fig_pie.update_layout(height=300, margin=dict(t=30,b=0,l=0,r=0), template="plotly_dark")
-                st.plotly_chart(fig_pie, use_container_width=True)
-            else:
-                st.info("📋 Click [Run Full Audit (CrewAI)] to generate AI-powered portfolio analysis.")
+            # Charts
+            st.divider()
+            if 'calculated_portfolio' in st.session_state:
+                result_df = st.session_state.calculated_portfolio
+
+                # Sector pie chart
+                if '카테고리' in result_df.columns:
+                    sector_data = result_df.groupby('카테고리')['평가금액(KRW)'].sum().reset_index()
+                    fig_pie = px.pie(sector_data, names='카테고리', values='평가금액(KRW)',
+                                    title="섹터 분산", hole=0.5)
+                    fig_pie.update_layout(height=280, margin=dict(t=40,b=0,l=0,r=0), template="plotly_dark")
+                    st.plotly_chart(fig_pie, use_container_width=True)
+
+                # Top 10 bar chart
+                if '종목명' in result_df.columns:
+                    top_10 = result_df.nlargest(10, '평가금액(KRW)')
+                    colors = ['#FF6B6B' if x < 0 else '#4ECDC4' for x in top_10.get('수익률(%)', [0]*len(top_10))]
+                    fig_bar = go.Figure(go.Bar(x=top_10['종목명'], y=top_10['평가금액(KRW)']/1e6,
+                                              marker_color=colors,
+                                              text=[f"{x:.1f}%" for x in top_10.get('수익률(%)', [0]*len(top_10))],
+                                              textposition='outside'))
+                    fig_bar.update_layout(title="Top 10 종목", yaxis_title="백만원",
+                                         height=280, template="plotly_dark",
+                                         margin=dict(t=40,b=0,l=0,r=0), showlegend=False)
+                    st.plotly_chart(fig_bar, use_container_width=True)
     
         # [우측: Quick Stats]
         with col_action:

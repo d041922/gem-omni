@@ -30,7 +30,17 @@ class MemorySystem:
     def load_all_memory(self):
         """모든 종류의 기억을 파일에서 로드"""
         self.conversation_history = self._load_json(self.history_file, default=[])
-        self.user_profile = self._load_json(self.profile_file, default={"risk_tolerance": "neutral", "portfolio": []})
+        default_profile = {
+            "risk_tolerance": "중간",  # 보수적/중간/공격적
+            "investment_goal": "장기 자산 증식",
+            "investment_horizon": "10년",  # 단기(<3년)/중기(3-10년)/장기(>10년)
+            "preferred_strategy": "가치 투자",  # 가치/성장/배당/퀀트/혼합
+            "max_single_position": 15,  # %
+            "max_sector_concentration": 30,  # %
+            "rebalancing_threshold": 5,  # %
+            "portfolio": []
+        }
+        self.user_profile = self._load_json(self.profile_file, default=default_profile)
 
     def _load_json(self, filepath: str, default: Any) -> Any:
         if os.path.exists(filepath):
