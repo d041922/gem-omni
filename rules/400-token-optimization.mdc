@@ -1,0 +1,263 @@
+---
+alwaysApply: true
+---
+
+# Token Optimization Standards
+# 토큰 최적화 표준 (85-90% 절감 달성)
+
+본 표준은 GEM OMNI 프로젝트에서 실제로 적용하여 85-90% 토큰 절감을 달성한 검증된 방법론입니다.
+
+## 핵심 원칙
+
+### 1. 프롬프트와 데이터 분리 (Prompt Caching)
+- **원칙**: 시스템 프롬프트는 파일로 분리하여 캐싱 가능하게 만든다
+- **위치**: `.claude/prompts/*.md` 파일로 관리
+- **효과**: 90% 토큰 절감 (캐시 적중 시)
+
+**Bad Example:**
+```python
+prompt = f"""당신은 전문 애널리스트입니다.
+포트폴리오 데이터:
+{portfolio_data}  # 매번 변경되는 데이터
+
+분석 요청: ..."""
+
+response = llm.generate(prompt)  # 매번 전체 프롬프트 전송
+```
+
+**Good Example:**
+```python
+# 1. 시스템 프롬프트를 파일로 분리
+with open('.claude/prompts/analyst.md', 'r') as f:
+    system_prompt = f.read()  # 캐싱 가능!
+
+# 2. 데이터는 temp 파일로 저장
+import tempfile
+data_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json')
+json.dump(portfolio_data, data_file)
+data_file.flush()
+
+# 3. 파일 경로만 프롬프트에 포함
+system_prompt = system_prompt.replace('[DATA_FILE]', data_file.name)
+
+# 4. 사용자 프롬프트는 요약만
+user_prompt = f"파일: {data_file.name}\n총 {len(portfolio)} 종목 분석 요청"
+
+response = llm.generate(f"{system_prompt}\n\n{user_prompt}")
+```
+
+**결과**:
+- First call: 600 (system) + 100 (user) = 700 tokens
+- Cached calls: 100 tokens (85% 절감)
+
+---
+
+### 2. 데이터 캐싱 시스템 (Data Cache)
+- **원칙**: 도구는 전체 데이터를 반환하지 않고 요약만 반환
+- **위치**: `tmp/cache/*.json` 에 전체 데이터 저장
+- **효과**: 87.7% 토큰 절감
+
+**구현 패턴:**
+```python
+def save_portfolio_data(df: pd.DataFrame, filename: str) -> Dict:
+    """
+    Save full data to file, return summary only
+    """
+    file_path = CACHE_DIR / filename
+    df.to_json(file_path, orient='records')
+
+    # Return summary (< 500 tokens)
+    summary = {
+        "total_positions": len(df),
+        "total_value": df['value'].sum(),
+        "top_3_performers": df.nlargest(3, 'return')['name'].tolist()
+    }
+
+    return {
+        "success": True,
+        "file_path": str(file_path),
+        "summary": summary  # Only this goes to LLM!
+    }
+```
+
+**Before**: 5,000 tokens (전체 데이터)
+**After**: 300 tokens (요약만)
+**절감**: 94%
+
+---
+
+### 3. Context Elimination (컨텍스트 제거)
+- **원칙**: 에이전트 간 context cascade를 제거하고 파일 경로만 전달
+- **적용**: CrewAI task의 `context=[]` 파라미터 제거
+- **효과**: 51.7% 토큰 절감
+
+**Bad Example:**
+```python
+# CrewAI Tasks
+sync_task = Task(
+    description="Load portfolio data",
+    agent=data_agent
+)
+
+analysis_task = Task(
+    description="Analyze portfolio",
+    agent=analyst_agent,
+    context=[sync_task]  # ❌ 전체 출력이 전달됨
+)
+
+risk_task = Task(
+    description="Calculate risk",
+    agent=risk_agent,
+    context=[sync_task, analysis_task]  # ❌ 누적됨
+)
+```
+
+**Good Example:**
+```python
+sync_task = Task(
+    description=f"""Load portfolio data (TOKEN-OPTIMIZED):
+
+**OUTPUT FORMAT:**
+Save data to: {CACHE_DIR}/portfolio_raw.json
+Return only: file path + summary (< 300 tokens)
+""",
+    agent=data_agent
+)
+
+analysis_task = Task(
+    description=f"""Analyze portfolio (TOKEN-OPTIMIZED):
+
+**DATA SOURCE:**
+Load from file using CachedDataLoaderTool
+Standard path: {CACHE_DIR}/portfolio_raw.json
+
+**OUTPUT FORMAT:**
+Summary only (< 500 words)
+""",
+    agent=analyst_agent,
+    context=[]  # ✅ No context cascade
+)
+```
+
+**Before**: 979 tokens (4 tasks with cascade)
+**After**: 473 tokens (4 tasks independent)
+**절감**: 51.7%
+
+---
+
+### 4. Streamlit 캐싱 (@st.cache_data)
+- **원칙**: 동일한 입력에 대해 재계산/재조회 방지
+- **TTL**: 데이터 특성에 맞게 설정 (주가: 30분, 뉴스: 10분)
+- **효과**: API 호출 0, 토큰 0
+
+**구현:**
+```python
+@st.cache_data(ttl=1800)  # 30분
+def cached_analyze_stock(ticker: str, period: str):
+    """Same ticker+period = cached for 30min"""
+    return analyze_stock(ticker, period)
+
+# Usage
+result = cached_analyze_stock("NVDA", "1y")
+# First call: 8초, 800 tokens
+# Within 30min: 0.1초, 0 tokens ← 100% 절감!
+```
+
+---
+
+## 종합 효과
+
+### Before (최적화 전)
+```
+Portfolio Analysis (1회):
+- Data loading: 5,000 tokens
+- Context cascade: 979 tokens
+- AI prompt: 5,000 tokens
+Total: ~11,000 tokens
+Cost: $0.11 per analysis
+```
+
+### After (최적화 후)
+```
+Portfolio Analysis (1회):
+- Data summary: 300 tokens
+- No cascade: 473 tokens
+- AI prompt (cached): 100 tokens
+Total: ~900 tokens (first call), ~100 tokens (cached)
+Cost: $0.009 per analysis (first), $0.001 (cached)
+```
+
+### 결과
+- **토큰 절감**: 85-90%
+- **비용 절감**: 89-99%
+- **연간 절감액**: $76.80 (600회 분석 기준)
+
+---
+
+## 적용 체크리스트
+
+### 새로운 AI 기능 구현 시
+- [ ] 시스템 프롬프트를 `.claude/prompts/` 파일로 분리했는가?
+- [ ] 데이터는 temp 파일에 저장하고 요약만 LLM에 전달하는가?
+- [ ] 파일 경로를 프롬프트 placeholder로 전달하는가?
+- [ ] CrewAI 사용 시 context cascade를 제거했는가?
+- [ ] Streamlit에서 @st.cache_data를 적용했는가?
+
+### 기존 코드 리팩토링 시
+- [ ] 프롬프트 내부에 데이터가 하드코딩되어 있는가? → 분리
+- [ ] 도구가 전체 데이터를 반환하는가? → 요약으로 변경
+- [ ] 에이전트 간 전체 출력을 공유하는가? → 파일 경로만 공유
+- [ ] 동일한 API 호출을 반복하는가? → 캐싱 적용
+
+---
+
+## 실제 적용 예시
+
+### 1. 포트폴리오 대시보드 AI 인사이트
+- **파일**: `app.py` (line 178-213)
+- **패턴**: 프롬프트 분리 + 데이터 파일화
+- **결과**: 82.9% 토큰 절감
+
+### 2. 단일 종목 분석
+- **파일**: `pages_stock_analysis.py` (line 12-15)
+- **패턴**: @st.cache_data(ttl=1800)
+- **결과**: 30분 내 재분석 시 100% 절감
+
+### 3. FinanceCrew (4개 에이전트)
+- **파일**: `agents/crews/finance_crew.py`
+- **패턴**: Context elimination + Data cache
+- **결과**: 85-90% 토큰 절감
+
+---
+
+## 참고 문서
+- `FINAL_OPTIMIZATION_REPORT.md`: 전체 최적화 과정 및 측정 결과
+- `OPTIMIZATION_REPORT.md`: Step 1, 2 상세 설명
+- `TEST_RESULTS.md`: 테스트 검증 결과
+- `.claude/agents/*.md`: 에이전트 프롬프트 예시
+- `.claude/prompts/*.md`: 시스템 프롬프트 예시
+
+---
+
+## 주의사항
+
+### 캐싱 TTL 설정
+- **실시간 데이터** (주가, 뉴스): 짧게 (10-30분)
+- **정적 데이터** (기업 정보, 과거 데이터): 길게 (1-24시간)
+- **계산 결과**: 중간 (30분-1시간)
+
+### 프롬프트 캐싱 한계
+- 프롬프트가 조금이라도 변경되면 캐시 무효화
+- Placeholder는 캐싱 전에 치환 (예: `[DATA_FILE]`)
+- 데이터가 프롬프트에 포함되면 캐싱 불가
+
+### 에러 처리
+- 파일 경로 전달 시 파일 존재 여부 확인
+- 요약 데이터가 너무 작으면 분석 품질 저하 가능
+- 캐시 TTL 만료 시 자동 재조회 확인
+
+---
+
+**최종 검증**: 2026-01-25
+**프로젝트**: GEM OMNI
+**성과**: 85-90% 토큰 절감 달성 ✅

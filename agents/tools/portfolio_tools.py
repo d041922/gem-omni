@@ -1,6 +1,7 @@
 """
 Portfolio Calculation Tools for CrewAI
 Wraps existing finance_core_lib functionality into CrewAI Tools
+Optimized to reduce token usage by caching results
 """
 from crewai.tools import BaseTool
 from typing import Type, Any, Dict, List
@@ -13,6 +14,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from skills.finance_core_lib import calculate_portfolio_metrics
+from agents.tools.data_cache import save_portfolio_data, save_analysis_result
 
 
 class PortfolioMetricsInput(BaseModel):
@@ -27,7 +29,8 @@ class PortfolioMetricsCalculatorTool(BaseTool):
     description: str = (
         "Calculates portfolio metrics including evaluation amount, profit/loss, and return rate. "
         "Takes portfolio data, current prices, and USD/KRW exchange rate as input. "
-        "Returns calculated metrics for each position including 매수금액, 평가금액, 손익, 수익률. "
+        "Returns compact summary with key totals and file path to detailed metrics. "
+        "This tool is optimized to minimize token usage. "
         "Use this tool to analyze portfolio performance."
     )
     args_schema: Type[BaseModel] = PortfolioMetricsInput
@@ -39,7 +42,7 @@ class PortfolioMetricsCalculatorTool(BaseTool):
         usd_krw_rate: float = 1300.0
     ) -> Dict[str, Any]:
         """
-        Calculate portfolio metrics
+        Calculate portfolio metrics (Token-Optimized)
 
         Args:
             portfolio_data: Portfolio data as list of dictionaries
@@ -47,7 +50,7 @@ class PortfolioMetricsCalculatorTool(BaseTool):
             usd_krw_rate: USD to KRW exchange rate
 
         Returns:
-            Dictionary containing calculated portfolio metrics
+            Dictionary containing summary metrics and file path to detailed results
         """
         try:
             if current_prices is None:
@@ -59,11 +62,12 @@ class PortfolioMetricsCalculatorTool(BaseTool):
             if df.empty:
                 return {
                     "success": True,
-                    "portfolio_metrics": [],
-                    "total_cost": 0.0,
-                    "total_eval": 0.0,
-                    "total_profit": 0.0,
-                    "total_return_pct": 0.0,
+                    "summary": {
+                        "total_cost": 0.0,
+                        "total_eval": 0.0,
+                        "total_profit": 0.0,
+                        "total_return_pct": 0.0
+                    },
                     "message": "Portfolio is empty"
                 }
 
@@ -76,15 +80,38 @@ class PortfolioMetricsCalculatorTool(BaseTool):
             total_profit = result_df['손익(KRW)'].sum()
             total_return_pct = (total_profit / total_cost * 100) if total_cost > 0 else 0.0
 
+            # Save full metrics to cache
+            metrics_cache = save_portfolio_data(
+                result_df,
+                "portfolio_calculated.json",
+                metadata={"usd_krw_rate": usd_krw_rate, "type": "calculated_metrics"}
+            )
+
+            # Prepare compact summary
+            summary = {
+                "total_positions": len(result_df),
+                "total_cost_krw": float(total_cost),
+                "total_eval_krw": float(total_eval),
+                "total_profit_krw": float(total_profit),
+                "total_return_pct": float(total_return_pct),
+                "usd_krw_rate": usd_krw_rate
+            }
+
+            # Add top/bottom performers if available
+            if 'top_3_performers' in metrics_cache.get('summary', {}):
+                summary['top_3_performers'] = metrics_cache['summary']['top_3_performers']
+            if 'bottom_3_performers' in metrics_cache.get('summary', {}):
+                summary['bottom_3_performers'] = metrics_cache['summary']['bottom_3_performers']
+
             return {
                 "success": True,
-                "portfolio_metrics": result_df.to_dict(orient='records'),
-                "columns": result_df.columns.tolist(),
-                "total_cost": float(total_cost),
-                "total_eval": float(total_eval),
-                "total_profit": float(total_profit),
-                "total_return_pct": float(total_return_pct),
-                "message": "Successfully calculated portfolio metrics"
+                "metrics_file": metrics_cache.get("file_path"),
+                "summary": summary,
+                "message": (
+                    f"Calculated metrics for {len(result_df)} positions. "
+                    f"Total return: {total_return_pct:.2f}%. "
+                    f"Full metrics cached at: {metrics_cache.get('file_path')}"
+                )
             }
         except Exception as e:
             return {

@@ -10,6 +10,9 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from agents.tools.portfolio_tools import PortfolioMetricsCalculatorTool
+from agents.tools.file_loader_tool import CachedDataLoaderTool
+from agents.tools.validation_tool import PortfolioValidationTool
+from pathlib import Path
 
 
 def create_analyst_agent() -> Agent:
@@ -22,6 +25,19 @@ def create_analyst_agent() -> Agent:
     - Evaluating portfolio performance
     - Identifying top performers and underperformers
     """
+    # Load system prompt from .claude/agents/ (for prompt caching)
+    agent_prompt_file = Path(__file__).parent.parent.parent / ".claude" / "agents" / "analyst-agent.md"
+    if agent_prompt_file.exists():
+        with open(agent_prompt_file, 'r', encoding='utf-8') as f:
+            backstory = f.read()
+    else:
+        # Fallback to default
+        backstory = """You are a Chartered Financial Analyst (CFA) with 15 years of experience in
+portfolio management and performance attribution. You have worked at BlackRock and Vanguard
+managing multi-billion dollar portfolios. Your expertise includes portfolio performance calculation,
+asset allocation analysis, risk-adjusted returns, and currency conversion.
+You are known for precision in calculations and ability to extract meaningful insights."""
+
     # Create Gemini LLM for portfolio analysis (flash model for analytical tasks)
     llm = LLM(
         model="gemini/gemini-3-flash-preview",
@@ -31,13 +47,11 @@ def create_analyst_agent() -> Agent:
     return Agent(
         role="Portfolio Analysis Specialist",
         goal="Calculate accurate portfolio metrics and provide insightful performance analysis",
-        backstory="""You are a Chartered Financial Analyst (CFA) with 15 years of experience in
-portfolio management and performance attribution. You have worked at BlackRock and Vanguard
-managing multi-billion dollar portfolios. Your expertise includes portfolio performance calculation,
-asset allocation analysis, risk-adjusted returns, and currency conversion.
-You are known for precision in calculations and ability to extract meaningful insights.""",
+        backstory=backstory,
         tools=[
-            PortfolioMetricsCalculatorTool()
+            PortfolioMetricsCalculatorTool(),
+            CachedDataLoaderTool(),
+            PortfolioValidationTool()
         ],
         llm=llm,
         verbose=False,

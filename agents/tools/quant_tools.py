@@ -1,6 +1,7 @@
 """
 Quantitative Risk Analysis Tools for CrewAI
 Wraps existing quant_engine functionality into CrewAI Tools
+Optimized to reduce token usage by returning key insights instead of full matrices
 """
 from crewai.tools import BaseTool
 from typing import Type, Any, Dict, List
@@ -12,6 +13,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from skills.quant_engine import fetch_historical_prices, calculate_correlation, calculate_portfolio_beta
+from agents.tools.data_cache import save_analysis_result
 
 
 class QuantRiskInput(BaseModel):
@@ -25,7 +27,8 @@ class QuantRiskAnalysisTool(BaseTool):
     description: str = (
         "Performs quantitative risk analysis on a portfolio including correlation matrix and beta calculation. "
         "Takes list of tickers and portfolio weights as input. "
-        "Returns correlation matrix and portfolio beta (market sensitivity). "
+        "Returns key insights (highly correlated pairs, portfolio beta) and file path to full correlation matrix. "
+        "This tool is optimized to minimize token usage. "
         "Use this tool to assess portfolio risk and diversification."
     )
     args_schema: Type[BaseModel] = QuantRiskInput
@@ -36,14 +39,14 @@ class QuantRiskAnalysisTool(BaseTool):
         weights: Dict[str, float] = None
     ) -> Dict[str, Any]:
         """
-        Analyze portfolio risk
+        Analyze portfolio risk (Token-Optimized)
 
         Args:
             tickers: List of stock tickers
             weights: Portfolio weights dictionary
 
         Returns:
-            Dictionary containing correlation matrix and portfolio beta
+            Dictionary containing key risk insights and file path to detailed analysis
         """
         try:
             if weights is None:
@@ -72,12 +75,49 @@ class QuantRiskAnalysisTool(BaseTool):
             if weights:
                 portfolio_beta = calculate_portfolio_beta(price_df, weights)
 
+            # Extract key insights from correlation matrix
+            # Find highly correlated pairs (> 0.7 or < -0.7)
+            high_corr_pairs = []
+            if not corr_matrix.empty:
+                for i in range(len(corr_matrix.columns)):
+                    for j in range(i + 1, len(corr_matrix.columns)):
+                        ticker1 = corr_matrix.columns[i]
+                        ticker2 = corr_matrix.columns[j]
+                        corr_value = corr_matrix.iloc[i, j]
+
+                        if abs(corr_value) > 0.7:
+                            high_corr_pairs.append({
+                                "ticker1": ticker1,
+                                "ticker2": ticker2,
+                                "correlation": float(corr_value)
+                            })
+
+            # Save full correlation matrix to cache
+            risk_analysis = {
+                "correlation_matrix": corr_matrix.to_dict(),
+                "portfolio_beta": float(portfolio_beta),
+                "tickers": tickers,
+                "high_correlation_pairs": high_corr_pairs
+            }
+
+            cache_result = save_analysis_result(risk_analysis, "risk_analysis.json")
+
+            # Return compact summary
             return {
                 "success": True,
-                "correlation_matrix": corr_matrix.to_dict() if not corr_matrix.empty else {},
-                "portfolio_beta": float(portfolio_beta),
-                "tickers_analyzed": list(price_df.columns),
-                "message": "Successfully analyzed portfolio risk"
+                "risk_file": cache_result.get("file_path"),
+                "summary": {
+                    "portfolio_beta": float(portfolio_beta),
+                    "tickers_analyzed": len(tickers),
+                    "high_correlation_pairs_count": len(high_corr_pairs),
+                    "high_correlation_pairs": high_corr_pairs[:5]  # Top 5 only
+                },
+                "message": (
+                    f"Analyzed risk for {len(tickers)} tickers. "
+                    f"Portfolio beta: {portfolio_beta:.2f}. "
+                    f"Found {len(high_corr_pairs)} highly correlated pairs. "
+                    f"Full analysis cached at: {cache_result.get('file_path')}"
+                )
             }
         except Exception as e:
             return {

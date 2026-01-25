@@ -10,6 +10,8 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from agents.tools.ai_strategy_tools import GeminiStrategyTool
+from agents.tools.file_loader_tool import CachedDataLoaderTool
+from pathlib import Path
 
 
 def create_strategy_agent() -> Agent:
@@ -23,6 +25,20 @@ def create_strategy_agent() -> Agent:
     - Identifying market opportunities and threats
     - Creating prioritized action plans
     """
+    # Load system prompt from .claude/agents/ (for prompt caching)
+    agent_prompt_file = Path(__file__).parent.parent.parent / ".claude" / "agents" / "strategy-agent.md"
+    if agent_prompt_file.exists():
+        with open(agent_prompt_file, 'r', encoding='utf-8') as f:
+            backstory = f.read()
+    else:
+        # Fallback to default
+        backstory = """You are a seasoned investment strategist with 20 years of experience in wealth management.
+You have served as Chief Investment Officer (CIO) at major firms managing portfolios for high-net-worth clients.
+Your expertise includes strategic asset allocation, tactical rebalancing, market cycle analysis,
+and behavioral finance. You combine quantitative analysis with qualitative judgment.
+You are known for providing clear, actionable advice that clients can implement.
+You avoid jargon and explain complex concepts simply with data-backed recommendations."""
+
     # Create Gemini LLM for strategy generation (pro model for strategic thinking)
     llm = LLM(
         model="gemini/gemini-3-pro-preview",
@@ -32,14 +48,10 @@ def create_strategy_agent() -> Agent:
     return Agent(
         role="AI-Powered Investment Strategist",
         goal="Generate comprehensive, actionable investment strategies based on portfolio analysis and risk assessment",
-        backstory="""You are a seasoned investment strategist with 20 years of experience in wealth management.
-You have served as Chief Investment Officer (CIO) at major firms managing portfolios for high-net-worth clients.
-Your expertise includes strategic asset allocation, tactical rebalancing, market cycle analysis,
-and behavioral finance. You combine quantitative analysis with qualitative judgment.
-You are known for providing clear, actionable advice that clients can implement.
-You avoid jargon and explain complex concepts simply with data-backed recommendations.""",
+        backstory=backstory,
         tools=[
-            GeminiStrategyTool()
+            GeminiStrategyTool(),
+            CachedDataLoaderTool()
         ],
         llm=llm,
         verbose=False,

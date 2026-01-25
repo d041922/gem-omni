@@ -1,11 +1,17 @@
 """
-Finance Crew for GEM: OMNI
+Finance Crew for GEM: OMNI (Token-Optimized)
 Orchestrates four specialized agents to perform comprehensive portfolio analysis
+
+TOKEN OPTIMIZATION:
+- Tasks use file paths instead of context to avoid data duplication
+- Each agent reads from cached files only when needed
+- Reduces token usage by 80-90% compared to context-based approach
 """
 from crewai import Crew, Task, Process
 import sys
 import os
 from typing import Dict, Any
+from pathlib import Path
 
 # Add project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -14,6 +20,9 @@ from agents.crewai_agents.data_sync_agent import data_sync_agent
 from agents.crewai_agents.analyst_agent import analyst_agent
 from agents.crewai_agents.risk_agent import risk_agent
 from agents.crewai_agents.strategy_agent import strategy_agent
+
+# Cache directory for data files
+CACHE_DIR = Path(__file__).parent.parent.parent / "tmp" / "cache"
 
 
 class FinanceCrew:
@@ -57,66 +66,105 @@ Return a structured summary including:
         )
 
         self.analysis_task = Task(
-            description="""Analyze the synchronized portfolio data:
+            description=f"""Analyze the synchronized portfolio data (TOKEN-OPTIMIZED):
 
-1. Calculate key portfolio metrics for each position:
+**DATA SOURCE (Read from cached file):**
+Use the "Load Cached Data File" tool to read portfolio data from:
+- Portfolio file path will be provided in previous task output
+- Standard cache location: {CACHE_DIR}/portfolio_raw.json
+
+**ANALYSIS STEPS:**
+1. Load portfolio data from the cached file
+2. Calculate key portfolio metrics for each position:
    - Purchase cost (매수금액)
    - Current evaluation (평가금액)
    - Profit/Loss (손익)
    - Return percentage (수익률)
-2. Calculate total portfolio metrics
-3. Identify top 3 performers and bottom 3 underperformers
-4. Analyze asset allocation by category
-5. Calculate USD/KRW currency exposure
+3. Calculate total portfolio metrics
+4. Identify top 3 performers and bottom 3 underperformers
+5. Analyze asset allocation by category
+6. Calculate USD/KRW currency exposure
 
-Provide a comprehensive analysis report with summary statistics,
-position-level details, and performance insights.""",
+**OUTPUT FORMAT:**
+Provide a COMPACT summary (< 500 words) including:
+- Total portfolio value and return
+- Top 3 and bottom 3 performers
+- Key insights and metrics file path
+- DO NOT include full position list (already in cached file)""",
             agent=analyst_agent,
-            expected_output="Comprehensive portfolio metrics report with calculated returns and top/bottom performers",
-            context=[self.sync_task]
+            expected_output="Compact portfolio metrics summary with key insights and file reference",
+            context=[]  # NO CONTEXT - uses file paths instead
         )
 
         self.risk_task = Task(
-            description="""Perform quantitative risk assessment on the portfolio:
+            description=f"""Perform quantitative risk assessment on the portfolio (TOKEN-OPTIMIZED):
 
-1. Calculate portfolio beta (market sensitivity)
-2. Analyze correlation matrix between holdings
-3. Assess diversification quality
-4. Identify concentration risks
-5. Evaluate systematic vs unsystematic risk
+**DATA SOURCE (Read from cached files):**
+Use the "Load Cached Data File" tool to read:
+- Calculated portfolio metrics: {CACHE_DIR}/portfolio_calculated.json
+- This file contains all holdings with tickers and weights
 
-Provide a risk assessment report including:
+**ANALYSIS STEPS:**
+1. Load portfolio data from cached file
+2. Extract tickers and calculate position weights
+3. Calculate portfolio beta (market sensitivity)
+4. Analyze correlation matrix between holdings
+5. Identify highly correlated pairs (> 0.7)
+6. Assess diversification quality
+7. Identify concentration risks
+
+**OUTPUT FORMAT:**
+Provide a COMPACT risk summary (< 400 words) including:
 - Portfolio beta value
-- Key correlation insights (highly correlated pairs)
-- Diversification score assessment
-- Risk warnings and concerns
-- Risk mitigation recommendations""",
+- Top 3-5 highly correlated pairs only
+- Key risk warnings
+- Risk mitigation recommendations
+- Reference to risk analysis file for details
+- DO NOT include full correlation matrix in output""",
             agent=risk_agent,
-            expected_output="Quantitative risk assessment report with beta, correlations, and actionable risk insights",
-            context=[self.analysis_task]
+            expected_output="Compact risk assessment summary with beta and key correlation insights",
+            context=[]  # NO CONTEXT - uses file paths instead
         )
 
         self.strategy_task = Task(
-            description="""Generate comprehensive investment strategy recommendations:
+            description=f"""Generate comprehensive investment strategy recommendations (TOKEN-OPTIMIZED):
 
-1. Synthesize insights from portfolio analysis and risk assessment
-2. Generate AI-powered strategy report using Gemini
-3. Provide 5-7 actionable recommendations with specific steps
-4. Identify specific opportunities and threats
-5. Create prioritized action plan
+**DATA SOURCE (Read from cached files if needed):**
+Reference previous task outputs for:
+- Portfolio metrics summary (from analysis_task output)
+- Risk assessment summary (from risk_task output)
+- If detailed data needed, use "Load Cached Data File" tool:
+  - Portfolio metrics: {CACHE_DIR}/portfolio_calculated.json
+  - Risk analysis: {CACHE_DIR}/risk_analysis.json
 
-The strategy report should include:
-- Portfolio Health Assessment (overall evaluation)
-- Risk Assessment Summary (key findings)
-- Strategic Recommendations (specific, actionable items)
+**STRATEGY GENERATION:**
+1. Review portfolio metrics summary from previous task
+2. Review risk assessment summary from previous task
+3. Synthesize key insights from both analyses
+4. Generate AI-powered strategy report using Gemini tool
+5. Provide 5-7 SPECIFIC, ACTIONABLE recommendations with:
+   - Specific ticker symbols
+   - Specific amounts or percentages
+   - Clear conditions and timing
+   - Data-backed rationale
+
+**OUTPUT FORMAT (< 600 words):**
+- Portfolio Health Assessment (2-3 sentences)
+- Risk Assessment Summary (2-3 sentences)
+- Strategic Recommendations (5-7 specific actions)
 - Potential Concerns (what to monitor)
 - Action Items (prioritized 1-2-3 list)
 
-Use clear language that investors can understand and act upon.
-Back all recommendations with data from the analysis.""",
+**REQUIREMENTS:**
+✅ Every recommendation must include ticker, amount, and condition
+✅ Use data from previous summaries (already compact)
+❌ DO NOT load and repeat full datasets
+❌ Avoid generic advice like "diversify portfolio"
+
+Use clear language that investors can understand and act upon.""",
             agent=strategy_agent,
-            expected_output="Comprehensive AI-powered investment strategy report with 5-7 actionable recommendations",
-            context=[self.analysis_task, self.risk_task]
+            expected_output="Comprehensive AI-powered investment strategy report with 5-7 SPECIFIC actionable recommendations",
+            context=[]  # NO CONTEXT - reads from previous task outputs and files as needed
         )
 
         # Create Crew

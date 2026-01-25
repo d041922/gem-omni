@@ -10,6 +10,9 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from agents.tools.quant_tools import QuantRiskAnalysisTool
+from agents.tools.file_loader_tool import CachedDataLoaderTool
+from agents.tools.validation_tool import PortfolioValidationTool
+from pathlib import Path
 
 
 def create_risk_agent() -> Agent:
@@ -23,6 +26,19 @@ def create_risk_agent() -> Agent:
     - Identifying concentration risks
     - Evaluating systematic vs unsystematic risk
     """
+    # Load system prompt from .claude/agents/ (for prompt caching)
+    agent_prompt_file = Path(__file__).parent.parent.parent / ".claude" / "agents" / "risk-agent.md"
+    if agent_prompt_file.exists():
+        with open(agent_prompt_file, 'r', encoding='utf-8') as f:
+            backstory = f.read()
+    else:
+        # Fallback to default
+        backstory = """You are a PhD in Financial Engineering from MIT with 12 years of experience in
+quantitative risk management. You have worked at Goldman Sachs' Strats team and JP Morgan's quant division.
+Your expertise includes portfolio beta and factor models, correlation analysis, stress testing,
+and Modern Portfolio Theory optimization. You always consider tail risks and worst-case scenarios.
+Your motto: "Hope for the best, prepare for the worst." You provide clear risk metrics and actionable strategies."""
+
     # Create Gemini LLM for risk analysis (pro model for complex analysis)
     llm = LLM(
         model="gemini/gemini-3-pro-preview",
@@ -32,13 +48,11 @@ def create_risk_agent() -> Agent:
     return Agent(
         role="Quantitative Risk Analyst",
         goal="Assess portfolio risk comprehensively using quantitative methods and identify potential risks",
-        backstory="""You are a PhD in Financial Engineering from MIT with 12 years of experience in
-quantitative risk management. You have worked at Goldman Sachs' Strats team and JP Morgan's quant division.
-Your expertise includes portfolio beta and factor models, correlation analysis, stress testing,
-and Modern Portfolio Theory optimization. You always consider tail risks and worst-case scenarios.
-Your motto: "Hope for the best, prepare for the worst." You provide clear risk metrics and actionable strategies.""",
+        backstory=backstory,
         tools=[
-            QuantRiskAnalysisTool()
+            QuantRiskAnalysisTool(),
+            CachedDataLoaderTool(),
+            PortfolioValidationTool()
         ],
         llm=llm,
         verbose=False,
