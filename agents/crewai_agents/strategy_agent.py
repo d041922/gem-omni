@@ -2,7 +2,8 @@
 AI Strategy Agent for CrewAI
 Responsible for generating investment strategy recommendations using AI
 """
-from crewai import Agent, LLM
+from crewai import Agent
+from core.models import pro_llm as gemini_llm
 import sys
 import os
 
@@ -25,25 +26,13 @@ def create_strategy_agent() -> Agent:
     - Identifying market opportunities and threats
     - Creating prioritized action plans
     """
-    # Load system prompt from .claude/agents/ (for prompt caching)
+    # Load system prompt from .claude/agents/
     agent_prompt_file = Path(__file__).parent.parent.parent / ".claude" / "agents" / "strategy-agent.md"
     if agent_prompt_file.exists():
         with open(agent_prompt_file, 'r', encoding='utf-8') as f:
             backstory = f.read()
     else:
-        # Fallback to default
-        backstory = """You are a seasoned investment strategist with 20 years of experience in wealth management.
-You have served as Chief Investment Officer (CIO) at major firms managing portfolios for high-net-worth clients.
-Your expertise includes strategic asset allocation, tactical rebalancing, market cycle analysis,
-and behavioral finance. You combine quantitative analysis with qualitative judgment.
-You are known for providing clear, actionable advice that clients can implement.
-You avoid jargon and explain complex concepts simply with data-backed recommendations."""
-
-    # Create Gemini LLM for strategy
-    llm = LLM(
-        model="gemini/gemini-3-pro-preview",
-        temperature=0.3
-    )
+        backstory = "You are a senior investment strategist."
 
     return Agent(
         role="AI-Powered Investment Strategist",
@@ -53,7 +42,7 @@ You avoid jargon and explain complex concepts simply with data-backed recommenda
             GeminiStrategyTool(),
             CachedDataLoaderTool()
         ],
-        llm=llm,
+        llm=gemini_llm,
         verbose=False,
         allow_delegation=False,
         max_iter=5

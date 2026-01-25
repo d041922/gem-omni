@@ -2,7 +2,8 @@
 Risk Assessment Agent for CrewAI
 Responsible for quantitative risk analysis and portfolio diversification assessment
 """
-from crewai import Agent, LLM
+from crewai import Agent
+from core.models import pro_llm as gemini_llm
 import sys
 import os
 
@@ -33,28 +34,19 @@ def create_risk_agent() -> Agent:
             backstory = f.read()
     else:
         # Fallback to default
-        backstory = """You are a PhD in Financial Engineering from MIT with 12 years of experience in
-quantitative risk management. You have worked at Goldman Sachs' Strats team and JP Morgan's quant division.
-Your expertise includes portfolio beta and factor models, correlation analysis, stress testing,
-and Modern Portfolio Theory optimization. You always consider tail risks and worst-case scenarios.
-Your motto: "Hope for the best, prepare for the worst." You provide clear risk metrics and actionable strategies."""
-
-    # Create Gemini LLM for risk analysis
-    llm = LLM(
-        model="gemini/gemini-3-pro-preview",
-        temperature=0.1
-    )
+        backstory = """You are a PhD in Financial Engineering with 12 years of experience in risk management.
+You specialize in quantitative risk assessment, tail risk hedging, and portfolio optimization.
+Your approach is data-driven and focused on protecting capital during market stress.
+You have extensive experience with VaR, stress testing, and correlation analysis."""
 
     return Agent(
         role="Quantitative Risk Analyst",
         goal="Assess portfolio risk comprehensively using quantitative methods and identify potential risks",
         backstory=backstory,
         tools=[
-            QuantRiskAnalysisTool(),
-            CachedDataLoaderTool(),
-            PortfolioValidationTool()
+            # Risk Tools
         ],
-        llm=llm,
+        llm=gemini_llm,
         verbose=False,
         allow_delegation=False,
         max_iter=5

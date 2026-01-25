@@ -1,40 +1,18 @@
-from pydantic import BaseModel, Field
-from typing import List, Dict, Optional, Any
-from datetime import datetime
+from crewai import LLM
+import os
 
-class Asset(BaseModel):
-    ticker: str
-    name: str
-    amount: float = 0.0
-    avg_price: float = 0.0
-    current_price: float = 0.0
-    currency: str = "KRW"
-    category: str = "기타"
-    source: str = "Unknown"
-    last_updated: datetime = Field(default_factory=datetime.now)
-    # 계산된 필드들 (UI/저장용)
-    total_purchase_value: float = 0.0
-    total_evaluation_value: float = 0.0
-    profit_amount: float = 0.0
-    profit_pct: float = 0.0
+def get_gemini_llm(model_name="gemini/gemini-2.0-flash-exp", temperature=0.3):
+    """
+    GEM: OMNI 시스템 표준 LLM 생성 함수.
+    접두어 'gemini/'를 사용하여 litellm 호환성을 보장함.
+    """
+    return LLM(
+        model=model_name,
+        temperature=temperature,
+        api_key=os.getenv("GOOGLE_API_KEY")
+    )
 
-class Portfolio(BaseModel):
-    assets: List[Asset] = []
-    total_asset_value: float = 0.0
-
-class ActionItem(BaseModel):
-    """실행 가능한 전략 지시사항"""
-    action: str  # 매수, 매도, 리밸런싱 등
-    ticker: str
-    amount: str  # "5%", "10주" 등
-    reason: str
-
-class StrategyReport(BaseModel):
-    """AI 헤지펀드 팀의 최종 전략 보고서 규격"""
-    headline: str
-    ai_verdict: str # Bullish, Bearish, Neutral
-    summary: str
-    risk_analysis: str
-    action_plan: List[ActionItem]
-    macro_alerts: List[str]
-    generated_at: datetime = Field(default_factory=datetime.now)
+# 시스템 표준 모델 인스턴스
+default_llm = get_gemini_llm()
+pro_llm = get_gemini_llm(model_name="gemini/gemini-3-pro-preview", temperature=0.1)
+flash_llm = get_gemini_llm(model_name="gemini/gemini-3-flash-preview", temperature=0.2)

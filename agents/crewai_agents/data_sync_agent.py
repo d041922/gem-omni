@@ -2,7 +2,8 @@
 Data Synchronization Agent for CrewAI
 Responsible for loading and synchronizing portfolio data from multiple sources
 """
-from crewai import Agent, LLM
+from crewai import Agent
+from core.models import flash_llm as gemini_llm
 import sys
 import os
 
@@ -36,12 +37,6 @@ You have worked with major investment banks ensuring data accuracy across multip
 Your expertise includes Google Sheets API, brokerage API integration, data validation,
 and real-time synchronization. You are meticulous and never compromise on data quality."""
 
-    # Create Gemini LLM for data sync (flash model for simple tasks)
-    llm = LLM(
-        model="gemini/gemini-3-flash-preview",
-        temperature=0.1
-    )
-
     return Agent(
         role="Data Synchronization Specialist",
         goal="Accurately load and synchronize portfolio data from Google Sheets and KIS API",
@@ -50,7 +45,7 @@ and real-time synchronization. You are meticulous and never compromise on data q
             GSheetLoaderTool(),
             KISAccountTool()
         ],
-        llm=llm,
+        llm=gemini_llm,
         verbose=False,
         allow_delegation=False,
         max_iter=5

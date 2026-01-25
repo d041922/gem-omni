@@ -178,162 +178,35 @@ else:
                     status_text.info("⏳ Generating AI insights...")
                     progress_bar.progress(30)
     
+                    # Get unified context from skills
+                    from skills.portfolio_utils import get_full_portfolio_analysis_context
+                    portfolio_context = get_full_portfolio_analysis_context()
+    
                     from google import genai
                     import os
                     client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
     
-                    # Prepare portfolio summary
-                    total_cost = result_df['매수금액(KRW)'].sum()
-                    total_value = result_df['평가금액(KRW)'].sum()
-                    total_profit = result_df['손익(KRW)'].sum()
-                    return_pct = (total_profit / total_cost * 100) if total_cost > 0 else 0
-    
-                    # Top performers
-                    top_3 = result_df.nlargest(3, '수익률(%)')
-                    bottom_3 = result_df.nsmallest(3, '수익률(%)')
-    
-                    name_col = '종목명' if '종목명' in result_df.columns else 'name'
-                    top_performers = '\n'.join([f"- {row[name_col]}: {row['수익률(%)']:.1f}%" for _, row in top_3.iterrows()])
-                    bottom_performers = '\n'.join([f"- {row[name_col]}: {row['수익률(%)']:.1f}%" for _, row in bottom_3.iterrows()])
-    
-                    # Prepare detailed holdings info for AI (전체 종목)
-                    from skills.news_analyzer import get_analyst_ratings
-                    holdings_detail = []
-                    for _, row in result_df.iterrows():
-                        name = row.get(name_col, 'N/A')
-                        ticker = row.get('티커코드', row.get('종목코드', 'N/A'))
-                        returns = row.get('수익률(%)', 0)
-                        cost = row.get('매수금액(KRW)', 0)
-                        value = row.get('평가금액(KRW)', 0)
-                        profit = row.get('손익(KRW)', 0)
-                        value_pct = (value / total_value * 100) if total_value > 0 else 0
-                        qty = row.get('수량', 0)
-                        avg_price = row.get('평균매수가', 0)
-                        current_price = row.get('현재가', 0)
-                        category = row.get('카테고리', 'N/A')
-                        account = row.get('계좌', 'N/A')
-                        
-                        # Fetch upside (Analyst consensus)
-                        ratings = get_analyst_ratings(ticker)
-                        upside = ratings.get('upside_pct', 0) if (ratings and ratings.get('status') != 'error') else 0
-
-                        holdings_detail.append({
-                            "name": name,
-                            "ticker": ticker,
-                            "account": account,
-                            "category": category,
-                            "quantity": float(qty),
-                            "avg_price": float(avg_price),
-                            "current_price": float(current_price),
-                            "cost_krw": float(cost),
-                            "value_krw": float(value),
-                            "profit_krw": float(profit),
-                            "return_pct": float(returns or 0),
-                            "portfolio_weight_pct": float(value_pct or 0),
-                            "upside_pct": float(upside or 0)
-                        })
-
-                    holdings_text = '\n'.join([
-                        f"- {h['name']} ({h['ticker']}) [{h['account']}]:\n"
-                        f"  수익률 {h['return_pct']:.1f}%, 비중 {h['portfolio_weight_pct']:.1f}%, **상승여력 {h['upside_pct']:.1f}%**\n"
-                        f"  평가 ₩{h['value_krw']/1e6:.1f}백만, 수량 {h['quantity']:.0f}주"
-                        for h in holdings_detail
-                    ])
-    
-                    # Calculate risk metrics
-                    from skills.finance_core_lib import calculate_portfolio_risk_metrics
-                    risk_metrics = calculate_portfolio_risk_metrics(result_df)
-    
-                    # Sector/Category analysis
-                    sector_summary = ""
-                    if '카테고리' in result_df.columns:
-                        sector_dist = result_df.groupby('카테고리')['평가금액(KRW)'].sum()
-                        sector_pct = (sector_dist / total_value * 100).round(1)
-                        sector_summary = '\n'.join([f"- {cat}: {pct:.1f}%" for cat, pct in sector_pct.items()])
+                    # Prepare prompt for deep analysis
+                    prompt = f"""
+                    You are a professional investment strategist (CIO level).
+                    Analyze the following portfolio and provide strategic insights:
                     
-                    # Account distribution
-                    account_summary = ""
-                    if '계좌' in result_df.columns:
-                        account_dist = result_df.groupby('계좌')['평가금액(KRW)'].sum()
-                        account_pct = (account_dist / total_value * 100).round(1)
-                        account_summary = '\n'.join([f"- {acc}: {pct:.1f}%" for acc, pct in account_pct.items()])
-    
-                    # Core/Satellite 자동 분류 (통합 유틸리티 사용)
-                    from skills.asset_classifier import AssetClassifier
-                    import json
-
-                    # USER_PROFILE의 전략 로드 (현재: balanced)
-                    classifier = AssetClassifier(strategy='balanced')
-
-                    core_value = 0
-                    satellite_value = 0
-
-                    for h in holdings_detail:
-                        asset_type = classifier.classify(
-                            h['ticker'],
-                            h.get('category', ''),
-                            h['name']
-                        )
-                        h['asset_type'] = asset_type
-
-                        if asset_type == 'Core':
-                            core_value += h['value_krw']
-                        else:
-                            satellite_value += h['value_krw']
-
-                    core_pct = (core_value / total_value * 100) if total_value > 0 else 0
-                    satellite_pct = (satellite_value / total_value * 100) if total_value > 0 else 0
-    
-                    # Load system prompt from file (for caching)
-                    from pathlib import Path
-                    prompt_file = Path(__file__).parent / ".claude" / "prompts" / "investment-analyst.md"
-
-                    if prompt_file.exists():
-                        with open(prompt_file, 'r', encoding='utf-8') as f:
-                            system_prompt = f.read()
-                    else:
-                        system_prompt = "당신은 CFA 자격을 보유한 포트폴리오 매니저입니다."
-
-                    # Load USER_PROFILE for context
-                    user_profile_path = Path(__file__).parent / "USER_PROFILE.md"
-                    user_profile_context = ""
-                    if user_profile_path.exists():
-                        with open(user_profile_path, 'r', encoding='utf-8') as f:
-                            user_profile_context = f.read()
-
-                    # Create detailed user prompt with FULL data
-                    user_prompt = f"""# 포트폴리오 정밀 분석 요청
-
-## 📊 전체 자산 현황
-- 총 투자금: ₩{total_cost/1e8:.2f}억원
-- 총 평가금액: ₩{total_value/1e8:.2f}억원
-- 총 수익률: {return_pct:.2f}%
-- Core 비중: {core_pct:.1f}% (목표 50-60%) / Satellite 비중: {satellite_pct:.1f}% (목표 40-50%)
-
-## 🏦 계좌별 비중
-{account_summary}
-
-## 🔍 종목별 상세 현황 (수익률, 비중, 애널리스트 상승여력 포함)
-{holdings_text}
-
-## 📋 전략적 액션 제안 (반드시 포함할 내용)
-
-1. **계좌별 전략**: 각 계좌(ISA, 연금, 일반 등)의 목적에 맞는 포지션 조정안
-2. **Bottom-Up 종목 액션**: 
-   - **추가 매수(Buy more)**: 상승여력은 높은데 비중이 적거나 단가가 매력적인 종목
-   - **수익 실현(Sell/Rebalance)**: 수익률은 높으나 상승여력이 소진된 종목, 혹은 비중이 너무 커진 종목
-   - **보유 지속(Hold)**: 추세가 견고하고 상승여력이 충분한 종목
-3. **구체적 수치**: "X주 매도 후 Y종목으로 이동" 또는 "₩XXX만원 추가 투입" 등 실행 가능한 가이드
-
-마스터를 위해 매우 정교하고 실행 가능한 분석을 한국어로 제공하세요."""
-
-                    full_prompt = f"{system_prompt}\n\n# 사용자 투자 전략\n{user_profile_context}\n\n---\n\n{user_prompt}"
-    
+                    {portfolio_context}
+                    
+                    Focus on:
+                    1. Risk concentration
+                    2. Performance attribution
+                    3. Actionable rebalancing advice
+                    4. Macro alignment
+                    
+                    Respond in Korean. Use markdown formatting.
+                    """
+                    
                     response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=full_prompt
+                        model="gemini-2.0-flash-exp",
+                        contents=prompt
                     )
-    
+                    
                     st.session_state.ai_insights = response.text
     
                     progress_bar.progress(100)
