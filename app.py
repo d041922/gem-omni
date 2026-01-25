@@ -233,17 +233,43 @@ else:
                     top_performers = '\n'.join([f"- {row[name_col]}: {row['수익률(%)']:.1f}%" for _, row in top_3.iterrows()])
                     bottom_performers = '\n'.join([f"- {row[name_col]}: {row['수익률(%)']:.1f}%" for _, row in bottom_3.iterrows()])
     
-                    # Prepare detailed holdings info for AI
+                    # Prepare detailed holdings info for AI (전체 종목)
                     holdings_detail = []
                     for _, row in result_df.iterrows():
                         name = row.get(name_col, 'N/A')
                         ticker = row.get('티커코드', row.get('종목코드', 'N/A'))
                         returns = row.get('수익률(%)', 0)
                         cost = row.get('매수금액(KRW)', 0)
+                        value = row.get('평가금액(KRW)', 0)
                         profit = row.get('손익(KRW)', 0)
-                        holdings_detail.append(f"- {name} ({ticker}): 수익률 {returns:.1f}%, 투자금 ₩{cost/1e6:.1f}백만, 손익 ₩{profit/1e6:.1f}백만")
-    
-                    holdings_text = '\n'.join(holdings_detail[:10])  # Top 10 for context
+                        value_pct = (value / total_value * 100) if total_value > 0 else 0
+                        qty = row.get('수량', 0)
+                        avg_price = row.get('평균매수가', 0)
+                        current_price = row.get('현재가', 0)
+                        category = row.get('카테고리', 'N/A')
+                        account = row.get('계좌', 'N/A')
+
+                        holdings_detail.append({
+                            "name": name,
+                            "ticker": ticker,
+                            "account": account,
+                            "category": category,
+                            "quantity": float(qty),
+                            "avg_price": float(avg_price),
+                            "current_price": float(current_price),
+                            "cost_krw": float(cost),
+                            "value_krw": float(value),
+                            "profit_krw": float(profit),
+                            "return_pct": float(returns),
+                            "portfolio_weight_pct": float(value_pct)
+                        })
+
+                    holdings_text = '\n'.join([
+                        f"- {h['name']} ({h['ticker']}) [{h['account']}]:\n"
+                        f"  비중 {h['portfolio_weight_pct']:.1f}%, 수익률 {h['return_pct']:.1f}%, "
+                        f"수량 {h['quantity']:.0f}주, 평가 ₩{h['value_krw']/1e6:.1f}백만"
+                        for h in holdings_detail
+                    ])
     
                     # Calculate risk metrics
                     from skills.finance_core_lib import calculate_portfolio_risk_metrics
@@ -256,60 +282,106 @@ else:
                         sector_pct = (sector_dist / total_value * 100).round(1)
                         sector_summary = '\n'.join([f"- {cat}: {pct:.1f}%" for cat, pct in sector_pct.items()])
     
-                    # Save portfolio snapshot to file (token optimization)
+                    # Core/Satellite 자동 분류
                     import json
-                    import tempfile
-                    snapshot_data = {
-                        "summary": {
-                            "total_positions": len(result_df),
-                            "total_cost": float(total_cost),
-                            "total_value": float(total_value),
-                            "total_return_pct": float(return_pct)
-                        },
-                        "risk_metrics": {
-                            "max_position_pct": float(risk_metrics.get('max_position_pct', 0)),
-                            "concentration_risk": float(risk_metrics.get('concentration_risk', 0)),
-                            "volatility": float(risk_metrics.get('volatility', 0))
-                        },
-                        "sectors": sector_summary,
-                        "top_holdings": holdings_text.split('\n')[:5]  # Top 5 only
-                    }
-    
-                    snapshot_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json', encoding='utf-8')
-                    json.dump(snapshot_data, snapshot_file, ensure_ascii=False, indent=2)
-                    snapshot_file.close()
+                    core_keywords = ['SPY', 'VOO', 'QQQ', 'VTI', 'SCHD', 'VYM', 'MSFT', 'AAPL', 'JNJ', 'PG', 'KO']
+                    satellite_keywords = ['NVDA', 'AMD', 'TSM', 'TSMC', 'SMCI', 'PLTR', 'CRSP', 'EDIT', 'BEAM',
+                                         '005930', '000660', 'ARKK', 'SMH', 'SOXX']
+
+                    core_value = 0
+                    satellite_value = 0
+
+                    for h in holdings_detail:
+                        ticker = h['ticker']
+                        value = h['value_krw']
+
+                        if any(kw in ticker for kw in core_keywords):
+                            h['asset_type'] = 'Core'
+                            core_value += value
+                        elif any(kw in ticker for kw in satellite_keywords):
+                            h['asset_type'] = 'Satellite'
+                            satellite_value += value
+                        else:
+                            # Default: 카테고리 기반 판단
+                            cat = h.get('category', '').lower()
+                            if 'etf' in cat or 'index' in cat or '배당' in cat:
+                                h['asset_type'] = 'Core'
+                                core_value += value
+                            else:
+                                h['asset_type'] = 'Satellite'
+                                satellite_value += value
+
+                    core_pct = (core_value / total_value * 100) if total_value > 0 else 0
+                    satellite_pct = (satellite_value / total_value * 100) if total_value > 0 else 0
     
                     # Load system prompt from file (for caching)
                     from pathlib import Path
                     prompt_file = Path(__file__).parent / ".claude" / "prompts" / "investment-analyst.md"
-    
+
                     if prompt_file.exists():
                         with open(prompt_file, 'r', encoding='utf-8') as f:
                             system_prompt = f.read()
                     else:
                         system_prompt = "당신은 CFA 자격을 보유한 포트폴리오 매니저입니다."
-    
-                    # Replace placeholders
-                    system_prompt = system_prompt.replace('[DATA_FILE_PATH]', snapshot_file.name)
-    
-                    # Create concise user prompt (< 500 tokens)
-                    user_prompt = f"""포트폴리오 데이터 파일: {snapshot_file.name}
-    
-    ## 요약 정보
-    - 총 종목: {len(result_df)}개
-    - 총 수익률: {return_pct:.2f}%
-    - 최대 종목 비중: {risk_metrics.get('max_position_pct', 0):.1f}%
-    - 상위 3종목 집중도: {risk_metrics.get('concentration_risk', 0):.1f}%
-    
-    ## 분석 요청
-    위 데이터를 바탕으로 다음을 제공하세요:
-    1. Top-Down 평가 (2-3문장)
-    2. Bottom-Up 실행 액션 (최대 3개, 종목명+금액+조건 필수)
-    3. 리밸런싱 제안 (구체적 금액 명시)
-    
-    500자 이내, 실행 가능한 내용만."""
-    
-                    full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+                    # Load USER_PROFILE for context
+                    user_profile_path = Path(__file__).parent / "USER_PROFILE.md"
+                    user_profile_context = ""
+                    if user_profile_path.exists():
+                        with open(user_profile_path, 'r', encoding='utf-8') as f:
+                            user_profile_context = f.read()
+
+                    # Create detailed user prompt with FULL data
+                    user_prompt = f"""# 포트폴리오 분석 요청
+
+## 📊 포트폴리오 요약
+- 총 종목: {len(result_df)}개
+- 총 투자금: ₩{total_cost/1e8:.2f}억원
+- 총 평가금액: ₩{total_value/1e8:.2f}억원
+- 총 수익률: {return_pct:.2f}%
+- **Core 비중: {core_pct:.1f}%** (목표: 50-60%)
+- **Satellite 비중: {satellite_pct:.1f}%** (목표: 40-50%)
+
+## 🏦 계좌별 & 종목별 상세 내역
+
+{holdings_text}
+
+## 📈 섹터 분산
+{sector_summary}
+
+## ⚠️ 리스크 지표
+- 최대 종목 비중: {risk_metrics.get('max_position_pct', 0):.1f}%
+- 상위 3종목 집중도: {risk_metrics.get('concentration_risk', 0):.1f}%
+- 포트폴리오 변동성: {risk_metrics.get('volatility', 0):.2f}%
+
+## 📋 분석 요청
+위 **실제 데이터**를 바탕으로 다음을 제공하세요:
+
+1. **Core-Satellite 균형 평가**:
+   - 현재 Core {core_pct:.1f}%, Satellite {satellite_pct:.1f}%가 목표 범위(50-60% / 40-50%)에 있는지
+   - 리밸런싱 필요 여부
+
+2. **Bottom-Up 실행 액션** (최대 3개):
+   - **계좌명 필수**: "ISA 계좌" / "연금저축" / "IRP" 등
+   - **정확한 티커와 종목명**: 예) "NVDA (엔비디아)"
+   - **구체적 금액과 수량**: 예) "₩855만원 (약 50주)" 또는 "보유량의 50%"
+   - **Core/Satellite 분류**: 각 종목의 자산 분류 명시
+   - **근거**: 단순 "비중 초과"가 아닌, **펀더멘털/성장성/추세** 기반 판단
+   - **중요**: 좋은 Satellite 종목(AI 성장 스토리, 강한 추세)은 비중이 높아도 보유 유지 가능
+
+3. **리밸런싱 제안**:
+   - Satellite 익절 → Core 이동 시나리오 (구체적 금액)
+   - 또는 Core 추가 매수 방안
+
+**중요 원칙**:
+- 비중 초과는 경고일 뿐, 매도 근거가 아님
+- Satellite는 초과 수익 알파를 내야 하므로, 성장성 좋은 종목은 집중 투자 유지
+- 섹터 집중도 40%까지 허용 (특히 AI/반도체)
+- 단순 규칙이 아닌 데이터 기반 판단 필수
+
+500자 이내, 실행 가능한 내용만."""
+
+                    full_prompt = f"{system_prompt}\n\n# 사용자 투자 전략\n{user_profile_context}\n\n---\n\n{user_prompt}"
     
                     response = client.models.generate_content(
                         model="gemini-2.5-flash",
