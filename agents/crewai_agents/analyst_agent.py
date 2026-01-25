@@ -41,7 +41,7 @@ You are known for precision in calculations and ability to extract meaningful in
     # Create Gemini LLM for portfolio analysis (flash model for analytical tasks)
     llm = LLM(
         model="gemini/gemini-3-flash-preview",
-        temperature=0.1
+        temperature=0.3
     )
 
     return Agent(
