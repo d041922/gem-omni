@@ -75,30 +75,41 @@ def render_stock_analysis_page():
         st.metric("52주 위치", f"{summary['position_52w_pct']:.1f}%", f"최고: ${summary['52week_high']:.2f}")
 
     # --- Content ---
-    t1, t2, t3, t4 = st.tabs(["📈 차트/지표", "💼 펀더멘털", "📰 리서치/뉴스", "🧠 AI 분석"])
+    from skills.stock_analyzer import get_technical_insight, get_fundamental_insight
+    
+    t1, t2, t3 = st.tabs(["📈 차트/기술적", "💼 펀더멘털/리서치", "🧠 AI 심층분석"])
     
     with t1:
+        # Technical Insight
+        tech_insight = get_technical_insight(summary)
+        st.info(f"🤖 **AI 기술적 요약**: {tech_insight}")
+        
         col_c, col_i = st.columns([2, 1])
         with col_c: render_price_chart(df, ticker)
         with col_i: render_technical_indicators(summary)
         
     with t2:
+        # Fundamental Insight
+        fund_insight = get_fundamental_insight(summary)
+        st.info(f"🤖 **AI 펀더멘털 요약**: {fund_insight}")
+        
         render_fundamentals(summary)
         st.divider()
+        
+        # Integrated Research Section
+        st.markdown("### 📝 리서치 & 실적")
         render_earnings_analysis(ticker)
         st.divider()
         render_valuation_analysis(ticker)
+        render_optional_sections(ticker) # Analyst Ratings moved here
         
     with t3:
-        render_optional_sections(ticker)
-
-    with t4:
         render_ai_section(res)
 
 
 def render_optional_sections(ticker: str):
     """Render sections only if data is significant"""
-    from skills.news_analyzer import get_company_news, get_analyst_ratings, get_insider_transactions
+    from skills.news_analyzer import get_analyst_ratings, get_insider_transactions
     
     # Analyst Ratings
     ratings = get_analyst_ratings(ticker)
@@ -109,15 +120,6 @@ def render_optional_sections(ticker: str):
         c1.metric("컨센서스", ratings.get('consensus', 'N/A'))
         c2.metric("목표가 (평균)", f"${ratings.get('target_mean', 0):,.2f}")
         c3.metric("상승 여력", f"{ratings.get('upside_pct', 0):+.1f}%")
-
-    # News
-    news_items = get_company_news(ticker, limit=5)
-    if news_items:
-        st.divider()
-        st.markdown("### 📰 최근 뉴스")
-        for item in news_items:
-            st.markdown(f"**[{item.get('title')}]({item.get('link')})**")
-            st.caption(f"{item.get('publisher')} | {item.get('timestamp').strftime('%Y-%m-%d') if item.get('timestamp') else ''}")
 
     # Insider (Only if significant)
     insider = get_insider_transactions(ticker)
@@ -169,10 +171,68 @@ def render_ai_section(res: dict):
 
 # --- Utility Renderers (Simplified) ---
 def render_price_chart(df, ticker):
+    # 포트폴리오 보유 정보 확인
+    from skills.portfolio_utils import check_portfolio_holding
+    port_info = check_portfolio_holding(ticker)
+    
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3], vertical_spacing=0.05)
-    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Price'), row=1, col=1)
-    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', marker_color='gray', opacity=0.5), row=2, col=1)
-    fig.update_layout(height=500, template='plotly_dark', xaxis_rangeslider_visible=False, margin=dict(t=20, b=20, l=20, r=20))
+
+    # 1. Candlestick
+    fig.add_trace(go.Candlestick(
+        x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
+        name='Price', showlegend=False
+    ), row=1, col=1)
+
+    # 2. Moving Averages (MA20, MA60)
+    if 'ma20' in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['ma20'], name='MA 20',
+            line=dict(color='orange', width=1), opacity=0.8
+        ), row=1, col=1)
+    if 'ma60' in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['ma60'], name='MA 60',
+            line=dict(color='green', width=1), opacity=0.8
+        ), row=1, col=1)
+
+    # 3. Bollinger Bands
+    if 'bb_upper' in df.columns and 'bb_lower' in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['bb_upper'], name='BB Upper',
+            line=dict(color='gray', width=0), showlegend=False
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['bb_lower'], name='BB Lower',
+            line=dict(color='gray', width=0), fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)',
+            showlegend=False
+        ), row=1, col=1)
+
+    # 4. Avg Buy Price Line (If held)
+    if port_info:
+        # Determine correct average price based on ticker (KRW for Korean stocks, USD for others)
+        if ticker.endswith('.KS') or ticker.endswith('.KQ'):
+            avg_price = port_info.get('avg_price_krw', 0)
+        else:
+            avg_price = port_info.get('avg_price_usd', 0)
+            
+        if avg_price > 0:
+            fig.add_hline(y=avg_price, line_dash="dash", line_color="yellow", annotation_text="My Avg", row=1, col=1)
+
+    # 5. Volume
+    colors = ['red' if row['Open'] - row['Close'] >= 0 else 'green' for index, row in df.iterrows()]
+    fig.add_trace(go.Bar(
+        x=df.index, y=df['Volume'], name='Volume', marker_color=colors, opacity=0.5
+    ), row=2, col=1)
+
+    # Layout Updates
+    fig.update_layout(
+        height=550, 
+        template='plotly_dark', 
+        xaxis_rangeslider_visible=False, 
+        margin=dict(t=20, b=20, l=20, r=20),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    
     st.plotly_chart(fig, use_container_width=True)
 
 def render_technical_indicators(summary):
@@ -184,28 +244,79 @@ def render_technical_indicators(summary):
 def render_fundamentals(summary):
     fund = summary.get('fundamentals', {})
     
-    # Row 1: Basic
+    def format_metric(label, value, suffix="", good_thresh=None, bad_thresh=None, higher_is_better=True, help_text=None):
+        """Helper to render metric with color coding based on thresholds"""
+        color = "normal"
+        if good_thresh is not None and bad_thresh is not None:
+            if higher_is_better:
+                if value >= good_thresh: color = "off" # Greenish in dark mode usually implies normal or we use delta
+                elif value <= bad_thresh: color = "inverse" # Red
+            else: # Lower is better (e.g., PER, Debt)
+                if value <= good_thresh: color = "off"
+                elif value >= bad_thresh: color = "inverse"
+        
+        # Streamlit metric doesn't allow direct text color change easily without delta.
+        # We will use delta to indicate "Good" (Green) or "Bad" (Red) implicitly.
+        delta_val = None
+        if good_thresh is not None:
+            is_good = value >= good_thresh if higher_is_better else value <= good_thresh
+            is_bad = value <= bad_thresh if higher_is_better else value >= bad_thresh
+            
+            if is_good: delta_val = "Good"
+            elif is_bad: delta_val = "-Caution"
+            
+        st.metric(label, f"{value:,.1f}{suffix}", delta=delta_val, delta_color="normal" if delta_val == "Good" else "inverse", help=help_text)
+
+    # Row 1: Valuation & PEG
+    st.markdown("##### 💎 밸류에이션 & 성장 (PEG)")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("섹터", fund.get('sector', 'N/A'))
-    c2.metric("시가총액", f"${fund.get('market_cap', 0)/1e9:.1f}B")
-    c3.metric("P/E (PER)", f"{fund.get('pe_ratio', 0):.1f}")
-    c4.metric("P/B (PBR)", f"{fund.get('price_to_book', 0):.2f}")
     
-    # Row 2: Profitability & Growth
+    with c1:
+        st.metric("시가총액", f"${fund.get('market_cap', 0)/1e9:.1f}B")
+    with c2:
+        pe = fund.get('pe_ratio', 0)
+        format_metric("P/E (PER)", pe, good_thresh=15, bad_thresh=30, higher_is_better=False)
+    with c3:
+        # PEG Logic
+        peg = fund.get('peg_ratio', 0)
+        peg_label = "PEG (성장가치)"
+        if peg == 0 and fund.get('eps_growth', 0) > 0:
+            peg = pe / fund.get('eps_growth')
+            peg_label = "PEG (추정)"
+        
+        format_metric(peg_label, peg, good_thresh=1.0, bad_thresh=2.0, higher_is_better=False, help_text="< 1.0: 저평가, > 2.0: 고평가")
+        
+    with c4:
+        format_metric("EPS 성장률", fund.get('eps_growth', 0), "%", good_thresh=10, bad_thresh=0)
+
     st.divider()
+
+    # Row 2: Profitability
+    st.markdown("##### 💰 수익성 (Profitability)")
     c5, c6, c7, c8 = st.columns(4)
-    c5.metric("ROE", f"{fund.get('roe', 0):.1f}%")
-    c6.metric("영업이익률", f"{fund.get('operating_margin', 0):.1f}%")
-    c7.metric("매출 성장률", f"{fund.get('revenue_growth', 0):+.1f}%")
-    c8.metric("EPS 성장률", f"{fund.get('eps_growth', 0):+.1f}%")
-    
-    # Row 3: Health & Others
+    with c5:
+        format_metric("ROE (자기자본이익률)", fund.get('roe', 0), "%", good_thresh=15, bad_thresh=5)
+    with c6:
+        format_metric("영업이익률", fund.get('operating_margin', 0), "%", good_thresh=10, bad_thresh=0)
+    with c7:
+        format_metric("순이익률", fund.get('profit_margin', 0), "%", good_thresh=10, bad_thresh=0)
+    with c8:
+         format_metric("매출 성장률", fund.get('revenue_growth', 0), "%", good_thresh=10, bad_thresh=0)
+
     st.divider()
+
+    # Row 3: Financial Health
+    st.markdown("##### 🛡️ 재무 건전성 (Health)")
     c9, c10, c11, c12 = st.columns(4)
-    c9.metric("부채비율", f"{fund.get('debt_to_equity', 0):.1f}")
-    c10.metric("유동비율", f"{fund.get('current_ratio', 0):.2f}")
-    c11.metric("배당수익률", f"{fund.get('dividend_yield', 0):.1f}%" if fund.get('dividend_yield') else "0.0%")
-    c12.metric("Beta (변동성)", f"{fund.get('beta', 0):.2f}")
+    with c9:
+        format_metric("부채비율", fund.get('debt_to_equity', 0), "%", good_thresh=100, bad_thresh=200, higher_is_better=False)
+    with c10:
+        format_metric("유동비율", fund.get('current_ratio', 0), "", good_thresh=1.5, bad_thresh=1.0)
+    with c11:
+        div = fund.get('dividend_yield', 0)
+        st.metric("배당수익률", f"{div:.1f}%" if div else "-")
+    with c12:
+        st.metric("Beta (변동성)", f"{fund.get('beta', 0):.2f}")
 
 def render_earnings_analysis(ticker):
     try:

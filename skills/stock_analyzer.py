@@ -321,15 +321,30 @@ def generate_ai_analysis(analysis_result: Dict[str, Any]) -> str:
 - 현재가: ${summary.get('current_price', 0):.2f} ({summary.get('price_change_pct', 0):+.2f}%)
 - 기술적 지표: RSI {tech.get('rsi', 0):.1f}, 추세강도 ADX {tech.get('adx', 0):.1f}, 자금흐름 MFI {tech.get('mfi', 0):.1f}
 - 재무 지표: PER {fund.get('pe_ratio', 0):.1f}, PBR {fund.get('price_to_book', 0):.2f}, ROE {fund.get('roe', 0):.1f}%
+- 성장성/가치: PEG {fund.get('peg_ratio', 0):.2f}, 매출성장 {fund.get('revenue_growth', 0):.1f}%
 - 뉴스 심리: {news.get('overall', '중립')} ({news.get('summary', '소식 없음')})
 
-## 리포트 작성 가이드
-1. **{style} 관점의 평가**: 이 종목의 성격에 맞는 핵심 지표를 중심으로 현재 주가가 매력적인지 논리적으로 설명하세요.
-2. **미래 가치 진단**: 성장주라면 미래 이익 대비 저평가 여부를, 가치주라면 안전마진을 언급하세요.
-3. **전략적 제안 (Action)**: '적극 매수', '보유', '비중 축소' 중 하나를 선택하고 구체적인 이유와 목표가를 제시하세요.
-4. **마스터를 위한 넛지**: 이 종목을 포트폴리오에 담았을 때의 기대 효과를 한 문장으로 요약하세요.
+## 리포트 작성 가이드 (Markdown 형식)
 
-전문적이고 전략적인 톤(CFA 스타일)으로 한국어로 작성하세요."""
+**반드시 다음 구조를 따라 작성하세요:**
+
+### 1. ⚡ 3줄 핵심 요약
+(이 종목의 현재 상황을 3줄로 요약. 긍정/부정 여부를 명확히.)
+
+### 2. 📊 펀더멘털 & 밸류에이션 진단
+- **PEG 및 성장성**: (PEG 지표를 언급하며 저평가/고평가 여부 분석)
+- **수익성 (ROE)**: (ROE {fund.get('roe', 0):.1f}%에 대한 평가)
+- **재무 건전성**: (부채비율 등 리스크 요인 체크)
+
+### 3. 📈 기술적 분석 및 타이밍
+- (차트 추세, RSI, 매물대 등을 고려한 진입/청산 시점 분석)
+
+### 4. 🧭 종합 의견 및 전략
+- **투자의견**: (매수 / 보유 / 매도 / 관망 중 선택, 굵게 표시)
+- **목표가**: (단기/중기 목표가 제시)
+- **손절가**: (리스크 관리 라인 제시)
+
+**톤앤매너**: 전문적이고 직관적이며, 중요한 수치는 볼드체로 강조하세요. 한국어로 작성."""
 
     full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
@@ -342,3 +357,52 @@ def generate_ai_analysis(analysis_result: Dict[str, Any]) -> str:
         return response.text
     except Exception as e:
         return f"AI 분석 실패: {str(e)}"
+
+def get_technical_insight(summary: Dict[str, Any]) -> str:
+    """Generate a one-line rule-based technical insight."""
+    tech = summary.get('technical_indicators', {})
+    rsi = tech.get('rsi', 50)
+    adx = tech.get('adx', 0)
+    mfi = tech.get('mfi', 50)
+    current_price = summary.get('current_price', 0)
+    ma20 = tech.get('ma20', 0)
+
+    insights = []
+    
+    # RSI
+    if rsi > 70: insights.append("⚠️ RSI 과매수(70↑)")
+    elif rsi < 30: insights.append("🟢 RSI 과매도(30↓)")
+    
+    # ADX
+    if adx > 25: insights.append(f"🔥 강한 추세장(ADX {adx:.0f})")
+    
+    # Trend
+    if ma20 > 0:
+        if current_price > ma20: insights.append("📈 단기 상승세")
+        else: insights.append("📉 단기 하락세")
+
+    if not insights: return "보합/관망세"
+    return " | ".join(insights)
+
+def get_fundamental_insight(summary: Dict[str, Any]) -> str:
+    """Generate a one-line rule-based fundamental insight."""
+    fund = summary.get('fundamentals', {})
+    roe = fund.get('roe', 0)
+    peg = fund.get('peg_ratio', 0)
+    pbr = fund.get('price_to_book', 0)
+    
+    insights = []
+    
+    # ROE
+    if roe > 15: insights.append(f"💎 고수익성(ROE {roe:.0f}%)")
+    elif roe < 5: insights.append(f"⚠️ 낮은 수익성")
+    
+    # PEG
+    if 0 < peg < 1.0: insights.append("🚀 성장 대비 저평가(PEG<1)")
+    elif peg > 2.0: insights.append("⚠️ 고평가 우려(PEG>2)")
+    
+    # PBR
+    if pbr < 1.0: insights.append("🛡️ 자산가치 저평가(PBR<1)")
+
+    if not insights: return "특이사항 없는 밸류에이션"
+    return " | ".join(insights)

@@ -250,3 +250,43 @@ def get_portfolio_summary() -> Optional[Dict[str, Any]]:
         'num_holdings': len(portfolio_df),
         'sectors': sectors
     }
+
+def get_full_portfolio_analysis_context() -> str:
+    """
+    AI 분석을 위해 포트폴리오의 모든 상세 정보를 텍스트로 가공합니다.
+    (app.py의 복잡한 로직을 이관)
+    """
+    df = load_portfolio_from_session()
+    if df is None or df.empty:
+        return "포트폴리오 데이터가 없습니다."
+
+    total_cost = df['매수금액(KRW)'].sum()
+    total_value = df['평가금액(KRW)'].sum()
+    total_profit = df['손익(KRW)'].sum()
+    return_pct = (total_profit / total_cost * 100) if total_cost > 0 else 0
+
+    top_3 = df.nlargest(3, '수익률(%)')
+    bottom_3 = df.nsmallest(3, '수익률(%)')
+    
+    name_col = '종목명' if '종목명' in df.columns else 'name'
+    
+    context = f"## 포트폴리오 전체 요약\n"
+    context += f"- 총 매수금액: ₩{total_cost/1e8:.2f}억\n"
+    context += f"- 총 평가금액: ₩{total_value/1e8:.2f}억\n"
+    context += f"- 총 손익: ₩{total_profit/1e4:.0f}만원 ({return_pct:+.1f}%)\n\n"
+
+    context += "### 수익률 상위 3종목\n"
+    for _, row in top_3.iterrows():
+        context += f"- {row[name_col]}: {row['수익률(%)']:.1f}%\n"
+
+    context += "\n### 수익률 하위 3종목\n"
+    for _, row in bottom_3.iterrows():
+        context += f"- {row[name_col]}: {row['수익률(%)']:.1f}%\n"
+
+    context += "\n### 전체 보유 종목 상세\n"
+    for _, row in df.iterrows():
+        ticker = row.get('티커코드', row.get('종목코드', 'N/A'))
+        val_pct = (row['평가금액(KRW)'] / total_value * 100) if total_value > 0 else 0
+        context += f"- {row[name_col]} ({ticker}): 비중 {val_pct:.1f}%, 수익률 {row['수익률(%)']:.1f}%, 평가액 ₩{row['평가금액(KRW)']/1e6:.1f}M\n"
+
+    return context
