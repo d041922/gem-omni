@@ -11,7 +11,10 @@ from typing import Dict, Any, Optional
 from skills.technical_indicators import (
     calculate_ichimoku,
     calculate_bollinger_bands,
-    calculate_fibonacci_levels
+    calculate_fibonacci_levels,
+    calculate_adx,
+    calculate_mfi,
+    calculate_parabolic_sar
 )
 
 
@@ -76,12 +79,17 @@ def calculate_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df['ma60'] = df['Close'].rolling(window=60).mean()
     df['ma200'] = df['Close'].rolling(window=200).mean()
 
+    # NEW: Advanced Technical Indicators
+    df = calculate_adx(df, period=14)  # Trend strength
+    df = calculate_mfi(df, period=14)  # Money flow
+    df = calculate_parabolic_sar(df)  # Trailing stop
+
     return df
 
 
 def get_stock_info(ticker: str) -> Dict[str, Any]:
     """
-    Get fundamental stock information
+    Get fundamental stock information (Enhanced with profitability & financial health)
 
     Args:
         ticker: Stock ticker symbol
@@ -93,7 +101,8 @@ def get_stock_info(ticker: str) -> Dict[str, Any]:
         stock = yf.Ticker(ticker.upper())
         info = stock.info
 
-        return {
+        # Basic info
+        result = {
             "name": info.get("longName", ticker),
             "sector": info.get("sector", "N/A"),
             "industry": info.get("industry", "N/A"),
@@ -109,6 +118,27 @@ def get_stock_info(ticker: str) -> Dict[str, Any]:
             "avg_volume": info.get("averageVolume", 0),
             "description": info.get("longBusinessSummary", "")
         }
+
+        # NEW: Profitability metrics (수익성)
+        result["roe"] = info.get("returnOnEquity", 0) * 100 if info.get("returnOnEquity") else 0
+        result["operating_margin"] = info.get("operatingMargins", 0) * 100 if info.get("operatingMargins") else 0
+        result["profit_margin"] = info.get("profitMargins", 0) * 100 if info.get("profitMargins") else 0
+
+        # NEW: Financial health (재무 건전성)
+        result["debt_to_equity"] = info.get("debtToEquity", 0)
+        result["current_ratio"] = info.get("currentRatio", 0)
+        result["quick_ratio"] = info.get("quickRatio", 0)
+
+        # NEW: Growth metrics (성장성)
+        result["eps_growth"] = info.get("earningsQuarterlyGrowth", 0) * 100 if info.get("earningsQuarterlyGrowth") else 0
+        result["revenue_growth"] = info.get("revenueGrowth", 0) * 100 if info.get("revenueGrowth") else 0
+
+        # NEW: Valuation metrics (가치 평가)
+        result["ev_to_ebitda"] = info.get("enterpriseToEbitda", 0)
+        result["price_to_sales"] = info.get("priceToSalesTrailing12Months", 0)
+
+        return result
+
     except Exception as e:
         print(f"Error fetching info for {ticker}: {e}")
         return {"name": ticker, "error": str(e)}
@@ -172,14 +202,32 @@ def analyze_stock(ticker: str, period: str = "1y") -> Dict[str, Any]:
             "bb_upper": float(latest.get('bb_upper', 0)),
             "bb_lower": float(latest.get('bb_lower', 0)),
             "tenkan_sen": float(latest.get('tenkan_sen', 0)),
-            "kijun_sen": float(latest.get('kijun_sen', 0))
+            "kijun_sen": float(latest.get('kijun_sen', 0)),
+            # NEW: Advanced indicators
+            "adx": float(latest.get('adx', 0)),
+            "mfi": float(latest.get('mfi', 0)),
+            "psar": float(latest.get('psar', 0)),
+            "psar_trend": int(latest.get('psar_trend', 0))
         },
         "fundamentals": {
             "sector": stock_info.get("sector", "N/A"),
             "industry": stock_info.get("industry", "N/A"),
             "market_cap": stock_info.get("market_cap", 0),
             "pe_ratio": stock_info.get("pe_ratio", 0),
-            "beta": stock_info.get("beta", 0)
+            "beta": stock_info.get("beta", 0),
+            # NEW: Profitability (수익성)
+            "roe": stock_info.get("roe", 0),
+            "operating_margin": stock_info.get("operating_margin", 0),
+            "profit_margin": stock_info.get("profit_margin", 0),
+            # NEW: Financial Health (재무 건전성)
+            "debt_to_equity": stock_info.get("debt_to_equity", 0),
+            "current_ratio": stock_info.get("current_ratio", 0),
+            # NEW: Growth (성장성)
+            "eps_growth": stock_info.get("eps_growth", 0),
+            "revenue_growth": stock_info.get("revenue_growth", 0),
+            # NEW: Valuation (가치 평가)
+            "ev_to_ebitda": stock_info.get("ev_to_ebitda", 0),
+            "price_to_book": stock_info.get("price_to_book", 0)
         },
         "fibonacci_levels": fib_levels
     }
@@ -255,17 +303,21 @@ def generate_ai_analysis(analysis_result: Dict[str, Any]) -> str:
 - 현재 위치: {summary.get('position_52w_pct', 0):.1f}%
 
 ## 기술적 지표
-- RSI: {tech.get('rsi', 0):.1f}
-- MACD: {tech.get('macd', 0):.2f}
+- RSI: {tech.get('rsi', 0):.1f}, MACD: {tech.get('macd', 0):.2f}
+- ADX: {tech.get('adx', 0):.1f} (추세 강도), MFI: {tech.get('mfi', 0):.1f} (자금 흐름)
 - MA20: ${tech.get('ma20', 0):.2f}, MA60: ${tech.get('ma60', 0):.2f}
 - 볼린저: ${tech.get('bb_lower', 0):.2f} ~ ${tech.get('bb_upper', 0):.2f}
+- 파라볼릭 SAR: ${tech.get('psar', 0):.2f} (추세: {'상승' if tech.get('psar_trend', 0) > 0 else '하락'})
 
 ## 펀더멘털
 - 섹터: {fund.get('sector', 'N/A')}
-- PER: {fund.get('pe_ratio', 0):.1f}
+- 밸류에이션: PER {fund.get('pe_ratio', 0):.1f}, PBR {fund.get('price_to_book', 0):.2f}, EV/EBITDA {fund.get('ev_to_ebitda', 0):.1f}
+- 수익성: ROE {fund.get('roe', 0):.1f}%, 영업이익률 {fund.get('operating_margin', 0):.1f}%
+- 재무건전성: 부채비율 {fund.get('debt_to_equity', 0):.1f}, 유동비율 {fund.get('current_ratio', 0):.2f}
+- 성장성: EPS 성장률 {fund.get('eps_growth', 0):+.1f}%, 매출 성장률 {fund.get('revenue_growth', 0):+.1f}%
 - 베타: {fund.get('beta', 0):.2f}
 
-위 데이터를 바탕으로 투자 의견을 500자 이내로 작성하세요."""
+위 데이터를 바탕으로 Bottom-Up 분석 원칙에 따라 투자 의견을 작성하세요."""
 
     full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
