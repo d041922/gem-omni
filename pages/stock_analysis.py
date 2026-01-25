@@ -26,15 +26,18 @@ def render_stock_analysis_page():
     """Render single stock analysis page"""
     st.markdown("<p class='panel-header'>🔍 개별 종목 심층 분석</p>", unsafe_allow_html=True)
 
-    # Input section
-    col_input, col_period = st.columns([3, 1])
-    with col_input:
-        ticker_input = st.text_input(
-            "종목 티커 입력",
-            value=st.session_state.get('last_ticker', ''),
-            placeholder="미국: AAPL, NVDA | 한국: 005930.KS (삼성전자)",
-            help="미국 주식: AAPL, NVDA 등 | 한국 주식: 종목코드.KS (예: 005930.KS)"
-        ).upper().strip()
+    # Input section with autocomplete
+    from skills.popular_stocks import get_all_popular_stocks, get_ticker_display_name
+
+    col_input_mode, col_period = st.columns([3, 1])
+
+    with col_input_mode:
+        input_mode = st.radio(
+            "입력 방식",
+            ["인기 종목 선택", "직접 입력"],
+            horizontal=True,
+            key='input_mode'
+        )
 
     with col_period:
         period = st.selectbox(
@@ -43,6 +46,45 @@ def render_stock_analysis_page():
             index=3,  # Default: 1y
             key='stock_period'
         )
+
+    # Input based on mode
+    ticker_input = ""
+
+    if input_mode == "인기 종목 선택":
+        all_stocks = get_all_popular_stocks()
+        # Create display options (ticker - name)
+        stock_options = [""] + [f"{ticker} - {name}" for ticker, name in sorted(all_stocks.items())]
+
+        # Find default index if last_ticker exists
+        default_index = 0
+        if 'last_ticker' in st.session_state:
+            last_ticker = st.session_state.last_ticker
+            try:
+                default_display = get_ticker_display_name(last_ticker)
+                if default_display in stock_options:
+                    default_index = stock_options.index(default_display)
+            except:
+                pass
+
+        selected = st.selectbox(
+            "종목 선택",
+            options=stock_options,
+            index=default_index,
+            key='stock_select'
+        )
+
+        # Extract ticker from selection (format: "AAPL - Apple")
+        if selected and selected.strip():
+            ticker_input = selected.split(" - ")[0].strip()
+
+    else:
+        ticker_input = st.text_input(
+            "티커 직접 입력",
+            value=st.session_state.get('last_ticker', ''),
+            placeholder="미국: AAPL, NVDA | 한국: 005930.KS",
+            help="미국 주식: AAPL, NVDA 등 | 한국 주식: 종목코드.KS (예: 005930.KS)",
+            key='ticker_input'
+        ).upper().strip()
 
     analyze_button = st.button("🚀 종목 분석", width="stretch", type="primary")
 
@@ -204,6 +246,25 @@ def render_stock_analysis_page():
     # Valuation Analysis
     st.markdown("### 💰 밸류에이션 분석")
     render_valuation_analysis(ticker)
+
+    st.divider()
+
+    # === NEW: News & Analyst Section ===
+    # News
+    st.markdown("### 📰 최근 뉴스")
+    render_news_section(ticker)
+
+    st.divider()
+
+    # Analyst Ratings
+    st.markdown("### 💼 애널리스트 의견")
+    render_analyst_ratings(ticker)
+
+    st.divider()
+
+    # Insider Transactions
+    st.markdown("### 🔐 내부자 거래")
+    render_insider_transactions(ticker)
 
     st.divider()
 
@@ -765,3 +826,179 @@ def render_valuation_analysis(ticker: str):
 
     except Exception as e:
         st.error(f"밸류에이션 분석 오류: {str(e)}")
+
+
+def render_news_section(ticker: str):
+    """Render company news section"""
+    try:
+        from skills.news_analyzer import get_company_news, analyze_news_sentiment
+
+        with st.spinner("뉴스 로딩 중..."):
+            news_items = get_company_news(ticker, limit=5)
+
+        if not news_items:
+            st.info("최근 뉴스가 없습니다")
+            return
+
+        # Sentiment summary
+        sentiment = analyze_news_sentiment(news_items)
+        st.markdown(f"**뉴스 심리**: {sentiment}")
+
+        st.divider()
+
+        # Display news items
+        for idx, item in enumerate(news_items):
+            col_news, col_time = st.columns([4, 1])
+
+            with col_news:
+                title = item.get('title', 'N/A')
+                link = item.get('link', '')
+                publisher = item.get('publisher', 'Unknown')
+
+                if link:
+                    st.markdown(f"**[{title}]({link})**")
+                else:
+                    st.markdown(f"**{title}**")
+
+                st.caption(f"출처: {publisher}")
+
+            with col_time:
+                timestamp = item.get('timestamp')
+                if timestamp:
+                    st.caption(timestamp.strftime('%Y-%m-%d'))
+
+            if idx < len(news_items) - 1:
+                st.markdown("---")
+
+    except Exception as e:
+        st.error(f"뉴스 로딩 오류: {str(e)}")
+
+
+def render_analyst_ratings(ticker: str):
+    """Render analyst ratings and recommendations"""
+    try:
+        from skills.news_analyzer import get_analyst_ratings
+
+        with st.spinner("애널리스트 의견 분석 중..."):
+            ratings = get_analyst_ratings(ticker)
+
+        if 'error' in ratings:
+            st.warning(f"애널리스트 데이터가 없습니다")
+            return
+
+        # Consensus
+        col1, col2, col3, col4 = st.columns(4)
+
+        consensus = ratings.get('consensus', 'N/A')
+        total_analysts = ratings.get('total_analysts', 0)
+
+        with col1:
+            st.metric("컨센서스", consensus)
+            st.caption(f"{total_analysts}명 애널리스트")
+
+        with col2:
+            buy_pct = ratings.get('buy_pct', 0)
+            st.metric("매수 비율", f"{buy_pct:.0f}%")
+
+        with col3:
+            hold_pct = ratings.get('hold_pct', 0)
+            st.metric("보유 비율", f"{hold_pct:.0f}%")
+
+        with col4:
+            sell_pct = ratings.get('sell_pct', 0)
+            st.metric("매도 비율", f"{sell_pct:.0f}%")
+
+        # Price Targets
+        st.divider()
+        col_target1, col_target2, col_target3 = st.columns(3)
+
+        target_mean = ratings.get('target_mean')
+        target_high = ratings.get('target_high')
+        target_low = ratings.get('target_low')
+        upside_pct = ratings.get('upside_pct')
+
+        with col_target1:
+            if target_mean:
+                st.metric("목표가 (평균)", f"${target_mean:.2f}")
+
+        with col_target2:
+            if target_high:
+                st.metric("목표가 (최고)", f"${target_high:.2f}")
+
+        with col_target3:
+            if upside_pct is not None:
+                st.metric("상승 여력", f"{upside_pct:+.1f}%")
+
+        # Recent Changes
+        changes = ratings.get('recent_changes', {})
+        upgrades = changes.get('upgrades', 0)
+        downgrades = changes.get('downgrades', 0)
+
+        if upgrades > 0 or downgrades > 0:
+            st.divider()
+            st.caption(f"**최근 변화**: 상향 {upgrades}건 | 하향 {downgrades}건")
+
+    except Exception as e:
+        st.error(f"애널리스트 데이터 오류: {str(e)}")
+
+
+def render_insider_transactions(ticker: str):
+    """Render insider trading activity"""
+    try:
+        from skills.news_analyzer import get_insider_transactions
+
+        with st.spinner("내부자 거래 분석 중..."):
+            insider = get_insider_transactions(ticker)
+
+        if 'error' in insider:
+            st.warning("내부자 거래 데이터가 없습니다")
+            return
+
+        # Sentiment
+        sentiment = insider.get('sentiment', 'N/A')
+        buy_count = insider.get('buy_count', 0)
+        sell_count = insider.get('sell_count', 0)
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            sentiment_emoji = "🟢" if sentiment == "Bullish" else "🔴" if sentiment == "Bearish" else "⚪"
+            st.metric("내부자 심리", f"{sentiment_emoji} {sentiment}")
+
+        with col2:
+            st.metric("매수 거래", f"{buy_count}건")
+
+        with col3:
+            st.metric("매도 거래", f"{sell_count}건")
+
+        # Net Shares
+        net_shares = insider.get('net_shares', 0)
+        if net_shares != 0:
+            st.divider()
+            net_direction = "매수" if net_shares > 0 else "매도"
+            st.caption(f"**순매수/매도**: {net_direction} {abs(net_shares):,.0f}주")
+
+        # Top Buyers/Sellers
+        st.divider()
+        col_buy, col_sell = st.columns(2)
+
+        with col_buy:
+            st.markdown("**주요 매수자**")
+            top_buyers = insider.get('top_buyers', {})
+            if top_buyers:
+                for name, shares in list(top_buyers.items())[:3]:
+                    st.caption(f"• {name}: {shares:,.0f}주")
+            else:
+                st.caption("데이터 없음")
+
+        with col_sell:
+            st.markdown("**주요 매도자**")
+            top_sellers = insider.get('top_sellers', {})
+            if top_sellers:
+                for name, shares in list(top_sellers.items())[:3]:
+                    st.caption(f"• {name}: {shares:,.0f}주")
+            else:
+                st.caption("데이터 없음")
+
+    except Exception as e:
+        st.error(f"내부자 거래 데이터 오류: {str(e)}")

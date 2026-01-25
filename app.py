@@ -46,8 +46,8 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    options=["🌍 시장 정보", "📊 Portfolio Dashboard", "🔍 Stock Analysis"],
-    index=1  # Default to Portfolio Dashboard
+    options=["🏠 Home", "📊 Portfolio Dashboard", "🌍 시장 정보", "🔍 Stock Analysis"],
+    index=0  # Default to Home
 )
 
 st.sidebar.markdown("---")
@@ -148,7 +148,23 @@ st.caption(f"**시장 상황**: {market_mood} | 마지막 업데이트: {datetim
 st.divider()
 
 # --- 5. Page Router ---
-if page == "🌍 시장 정보":
+# Handle navigation from quick actions
+if 'nav_target' in st.session_state:
+    target = st.session_state.nav_target
+    if target == "portfolio":
+        page = "📊 Portfolio Dashboard"
+    elif target == "stock_analysis":
+        page = "🔍 Stock Analysis"
+    elif target == "market":
+        page = "🌍 시장 정보"
+    del st.session_state.nav_target
+
+if page == "🏠 Home":
+    # Render Home Page
+    from pages.home import render_home_page
+    render_home_page()
+
+elif page == "🌍 시장 정보":
     # Render Market Overview Page
     from pages.market_overview import render_market_overview_page
     render_market_overview_page()
@@ -576,12 +592,25 @@ else:
         # Show calculated portfolio data
         if 'calculated_portfolio' in st.session_state:
             result_df = st.session_state.calculated_portfolio
-    
+
+            # Add asset_type if not present
+            if 'asset_type' not in result_df.columns:
+                from skills.asset_classifier import AssetClassifier
+                classifier = AssetClassifier(strategy='balanced')
+                result_df['asset_type'] = result_df.apply(
+                    lambda row: classifier.classify(
+                        row.get('티커코드', row.get('종목코드', '')),
+                        row.get('카테고리', ''),
+                        row.get('종목명', '')
+                    ), axis=1
+                )
+
             # Get available columns dynamically
             cols_to_show = []
             col_mapping = {
                 '종목명': '종목명',
                 '티커코드': '티커코드',
+                'asset_type': '자산유형',
                 '카테고리': '카테고리',
                 '수량': '수량',
                 '매수금액(KRW)': '매수금액(KRW)',
@@ -589,22 +618,31 @@ else:
                 '손익(KRW)': '손익(KRW)',
                 '수익률(%)': '수익률(%)'
             }
-    
+
             for col in col_mapping.keys():
                 if col in result_df.columns:
                     cols_to_show.append(col)
-    
+
             if cols_to_show:
                 display_df = result_df[cols_to_show].copy()
-    
+
+                # Rename asset_type to Korean
+                if 'asset_type' in display_df.columns:
+                    display_df = display_df.rename(columns={'asset_type': '자산유형'})
+
+                # Sort by return percentage (descending)
+                if '수익률(%)' in display_df.columns:
+                    # Sort before formatting
+                    display_df = display_df.sort_values('수익률(%)', ascending=False)
+
                 # Format currency columns
                 for col in ['매수금액(KRW)', '평가금액(KRW)', '손익(KRW)']:
                     if col in display_df.columns:
                         display_df[col] = display_df[col].apply(lambda x: f"₩{x:,.0f}")
-    
+
                 if '수익률(%)' in display_df.columns:
                     display_df['수익률(%)'] = display_df['수익률(%)'].apply(lambda x: f"{x:.2f}%")
-    
+
                 st.dataframe(display_df, width="stretch", height=400)
             else:
                 st.dataframe(result_df, width="stretch", height=400)

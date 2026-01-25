@@ -11,16 +11,6 @@
       "momentum_score": 7.0
     },
     {
-      "ticker": "GS",
-      "name": "The Goldman Sachs Group, Inc.",
-      "price": 918.8800048828125,
-      "change_pct": -3.7469249061408276,
-      "rsi": 51.050434942739635,
-      "volume_surge": 1.8294777377027587,
-      "position_52w": 71.92213531186383,
-      "momentum_score": 6.0
-    },
-    {
       "ticker": "GILD",
       "name": "Gilead Sciences, Inc.",
       "price": 135.92999267578125,
@@ -28,6 +18,16 @@
       "rsi": 69.29706591795963,
       "volume_surge": 1.8998430805370237,
       "position_52w": 98.39322525144615,
+      "momentum_score": 6.0
+    },
+    {
+      "ticker": "GS",
+      "name": "The Goldman Sachs Group, Inc.",
+      "price": 918.8800048828125,
+      "change_pct": -3.7469249061408276,
+      "rsi": 51.050434942739635,
+      "volume_surge": 1.8294777377027587,
+      "position_52w": 71.92213531186383,
       "momentum_score": 6.0
     },
     {
@@ -51,16 +51,6 @@
       "momentum_score": 5.0
     },
     {
-      "ticker": "NOW",
-      "name": "ServiceNow, Inc.",
-      "price": 133.11000061035156,
-      "change_pct": 3.5392059257655624,
-      "rsi": 31.395946401790198,
-      "volume_surge": 1.7240960133865606,
-      "position_52w": 13.485388959488542,
-      "momentum_score": 4.0
-    },
-    {
       "ticker": "INTU",
       "name": "Intuit Inc.",
       "price": 563.969970703125,
@@ -69,7 +59,17 @@
       "volume_surge": 1.6668965275423977,
       "position_52w": 25.883134970644544,
       "momentum_score": 4.0
+    },
+    {
+      "ticker": "NOW",
+      "name": "ServiceNow, Inc.",
+      "price": 133.11000061035156,
+      "change_pct": 3.5392059257655624,
+      "rsi": 31.395946401790198,
+      "volume_surge": 1.7240960133865606,
+      "position_52w": 13.485388959488542,
+      "momentum_score": 4.0
     }
   ],
-  "timestamp": "2026-01-25T16:26:56.002648"
+  "timestamp": "2026-01-25T17:48:07.346133"
 }
