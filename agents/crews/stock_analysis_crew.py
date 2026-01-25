@@ -7,6 +7,7 @@ from agents.crewai_agents.stock_agents import (
     create_fundamental_analyst,
     create_sentiment_analyst,
     create_valuation_analyst,
+    create_risk_control_agent,
     create_moderator
 )
 from typing import Dict, Any
@@ -15,18 +16,20 @@ import json
 
 def create_stock_analysis_crew() -> Crew:
     """
-    Create a crew of 4 agents for stock analysis
+    Create a crew of 5 agents for stock analysis
 
     Agents:
     1. Fundamental Analyst
     2. Sentiment Analyst
     3. Valuation & Technical Analyst
-    4. Moderator (Chairman)
+    4. Risk Control Agent
+    5. Moderator (Chairman)
     """
     # Create agents
     fundamental_analyst = create_fundamental_analyst()
     sentiment_analyst = create_sentiment_analyst()
     valuation_analyst = create_valuation_analyst()
+    risk_control = create_risk_control_agent()
     moderator = create_moderator()
 
     # Create crew
@@ -35,6 +38,7 @@ def create_stock_analysis_crew() -> Crew:
             fundamental_analyst,
             sentiment_analyst,
             valuation_analyst,
+            risk_control,
             moderator
         ],
         verbose=True
@@ -172,22 +176,51 @@ def run_stock_analysis(
         expected_output="기술적 분석 의견 (등급, 진입/익절/손절가, 근거)"
     )
 
-    # Task 4: Final Decision (Moderator)
+    # Task 4: Risk Control Analysis
+    task_risk_control = Task(
+        description=f"""
+{shared_context}
+
+당신의 역할: 리스크 관리 전문가
+
+임무:
+1. {ticker} ({fund.get('sector', 'N/A')} 섹터)를 포트폴리오에 추가/유지할 경우의 리스크를 평가하세요
+2. 이 종목의 적정 포트폴리오 비중을 제안하세요 (예: "최대 10%")
+3. 섹터 집중도 리스크를 진단하세요 (동일 섹터 과다 보유 위험)
+4. 리스크 관리 관점에서 매수/보유/매도/비중조절 의견을 제시하세요
+
+**중요**: 만약 앞선 분석가들이 "매수" 의견을 냈더라도, 집중도 리스크가 크다면 반드시 경고하세요.
+
+출력 형식:
+## 리스크 관리 의견
+- 등급: [매수/보유/매도/비중조절]
+- 적정 비중: 포트폴리오의 X%
+- 집중도 리스크: [낮음/보통/높음]
+- 핵심 논거: (3가지)
+- 경고 사항: (있다면)
+""",
+        agent=crew.agents[3],  # Risk Control Agent
+        expected_output="리스크 관리 의견 (등급, 적정 비중, 집중도 리스크, 근거)"
+    )
+
+    # Task 5: Final Decision (Moderator)
     task_decision = Task(
         description=f"""
 {shared_context}
 
 당신의 역할: 투자위원회 의장
 
-앞선 3명의 전문가 의견:
+앞선 4명의 전문가 의견:
 1. 펀더멘털 애널리스트 의견
 2. 심리 분석가 의견
 3. 기술적 분석가 의견
+4. 리스크 관리 전문가 의견
 
 임무:
-1. 3명의 의견을 종합하여 합의를 도출하세요
+1. 4명의 의견을 종합하여 합의를 도출하세요
 2. 의견 충돌 시 다수 의견을 채택하되, 소수 의견도 리스크에 반영하세요
-3. 최종 투자 의견서를 작성하세요
+3. **리스크 관리자의 집중도 경고는 최종 의견에 반드시 반영하세요**
+4. 최종 투자 의견서를 작성하세요
 
 출력 형식:
 # {ticker} 투자 의견서
@@ -195,15 +228,17 @@ def run_stock_analysis(
 ## 1️⃣ 최종 투자 등급
 **등급**: [매수/보유/매도]
 **목표가**: $XXX (현재가 대비 +XX%)
+**권장 비중**: 포트폴리오의 X% (리스크 관리자 의견 반영)
 **투자 기간**: [단기/중기/장기]
 
 ## 2️⃣ 종합 의견
-(3명 전문가 의견 요약 및 합의점)
+(4명 전문가 의견 요약 및 합의점)
 
 ## 3️⃣ 실행 전략
 ### 진입 전략
 - 최적 진입가: $XXX
 - 분할 매수 시나리오
+- 최대 투자 비중: X%
 
 ### 익절 전략
 - 1차 목표: $XXX
@@ -217,6 +252,7 @@ def run_stock_analysis(
 1. 리스크 1
 2. 리스크 2
 3. 리스크 3
+4. **집중도 리스크** (리스크 관리자 의견 포함)
 
 ## 5️⃣ 반대 의견 (Devil's Advocate)
 **만약 이 분석이 틀렸다면?**
@@ -228,9 +264,9 @@ def run_stock_analysis(
 - 주의 깊게 볼 지표
 - 재평가 시점
 """,
-        agent=crew.agents[3],  # Moderator
+        agent=crew.agents[4],  # Moderator
         expected_output="최종 투자 의견서 (구조화된 마크다운)",
-        context=[task_fundamental, task_sentiment, task_valuation]
+        context=[task_fundamental, task_sentiment, task_valuation, task_risk_control]
     )
 
     # Create tasks list
@@ -238,6 +274,7 @@ def run_stock_analysis(
         task_fundamental,
         task_sentiment,
         task_valuation,
+        task_risk_control,
         task_decision
     ]
 

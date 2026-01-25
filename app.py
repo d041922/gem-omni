@@ -6,6 +6,8 @@ from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from core.memory import MemorySystem
 from agents.crews.finance_crew import FinanceCrew
 from pages.stock_analysis import render_stock_analysis_page
+import yfinance as yf
+from datetime import datetime, timedelta
 
 # --- 1. Page Config ---
 st.set_page_config(page_title="GEM: OMNI Command Center", page_icon="💎", layout="wide", initial_sidebar_state="expanded")
@@ -53,14 +55,95 @@ st.sidebar.caption("Token-Optimized AI Analysis")
 st.sidebar.caption("Powered by Gemini & CrewAI")
 
 # --- 4. Top Bar (Global Market Pulse) ---
-st.markdown("<p class='panel-header'>Global Market Pulse</p>", unsafe_allow_html=True)
-m1, m2, m3, m4, m5 = st.columns(5)
-# (간소화를 위해 임시 수치, 추후 MarketAgent에서 실시간 수급)
-m1.metric("USD/KRW", "1,450.2", "+2.5")
-m2.metric("S&P 500", "5,842.1", "-0.2%")
-m3.metric("Nasdaq", "18,520.4", "-0.8%")
-m4.metric("VIX", "18.42", "Normal")
-m5.metric("BTC", "$102,450", "+4.2%")
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def fetch_market_data():
+    """Fetch real-time market data from yfinance"""
+    indices = {
+        "S&P 500": "^GSPC",
+        "NASDAQ": "^IXIC",
+        "KOSPI": "^KS11",
+        "VIX": "^VIX"
+    }
+
+    market_data = {}
+    for name, ticker in indices.items():
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period='2d')
+
+            if len(hist) >= 2:
+                current = hist['Close'].iloc[-1]
+                previous = hist['Close'].iloc[-2]
+                change_pct = ((current - previous) / previous) * 100
+
+                market_data[name] = {
+                    'value': current,
+                    'change': change_pct
+                }
+            else:
+                market_data[name] = {'value': 0, 'change': 0}
+        except:
+            market_data[name] = {'value': 0, 'change': 0}
+
+    return market_data
+
+# Fetch market data
+market_data = fetch_market_data()
+
+# Market pulse banner
+st.markdown("<p class='panel-header'>🌍 Global Market Pulse</p>", unsafe_allow_html=True)
+m1, m2, m3, m4 = st.columns(4)
+
+# S&P 500
+sp500 = market_data.get("S&P 500", {})
+m1.metric(
+    "S&P 500",
+    f"{sp500.get('value', 0):,.1f}",
+    f"{sp500.get('change', 0):+.2f}%",
+    delta_color="normal"
+)
+
+# NASDAQ
+nasdaq = market_data.get("NASDAQ", {})
+m2.metric(
+    "NASDAQ",
+    f"{nasdaq.get('value', 0):,.1f}",
+    f"{nasdaq.get('change', 0):+.2f}%",
+    delta_color="normal"
+)
+
+# KOSPI
+kospi = market_data.get("KOSPI", {})
+m3.metric(
+    "KOSPI",
+    f"{kospi.get('value', 0):,.1f}",
+    f"{kospi.get('change', 0):+.2f}%",
+    delta_color="normal"
+)
+
+# VIX (Volatility Index)
+vix = market_data.get("VIX", {})
+vix_value = vix.get('value', 0)
+vix_status = "Low" if vix_value < 15 else "Normal" if vix_value < 25 else "High"
+m4.metric(
+    "VIX",
+    f"{vix_value:.2f}",
+    vix_status,
+    delta_color="off"
+)
+
+# Market summary message
+avg_change = (sp500.get('change', 0) + nasdaq.get('change', 0) + kospi.get('change', 0)) / 3
+if avg_change > 1:
+    market_mood = "📈 시장 강세 - 위험자산 선호"
+elif avg_change > 0:
+    market_mood = "➡️ 시장 안정 - 완만한 상승"
+elif avg_change > -1:
+    market_mood = "↘️ 시장 약세 - 조정 국면"
+else:
+    market_mood = "📉 시장 하락 - 리스크 회피"
+
+st.caption(f"**시장 상황**: {market_mood} | 마지막 업데이트: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
 st.divider()
 
