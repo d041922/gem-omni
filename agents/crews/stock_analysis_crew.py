@@ -21,38 +21,15 @@ gemini_llm = LLM(
 )
 
 
-def create_stock_analysis_crew() -> Crew:
-    """
-    Create a crew of 5 agents for stock analysis
-
-    Agents:
-    1. Fundamental Analyst
-    2. Sentiment Analyst
-    3. Valuation & Technical Analyst
-    4. Risk Control Agent
-    5. Moderator (Chairman)
-    """
-    # Create agents
-    fundamental_analyst = create_fundamental_analyst()
-    sentiment_analyst = create_sentiment_analyst()
-    valuation_analyst = create_valuation_analyst()
-    risk_control = create_risk_control_agent()
-    moderator = create_moderator()
-
-    # Create crew with sequential process
-    crew = Crew(
-        agents=[
-            fundamental_analyst,
-            sentiment_analyst,
-            valuation_analyst,
-            risk_control,
-            moderator
-        ],
-        process=Process.sequential,
-        verbose=True
-    )
-
-    return crew
+def create_agents():
+    """Create all 5 agents for stock analysis"""
+    return {
+        'fundamental': create_fundamental_analyst(),
+        'sentiment': create_sentiment_analyst(),
+        'valuation': create_valuation_analyst(),
+        'risk_control': create_risk_control_agent(),
+        'moderator': create_moderator()
+    }
 
 
 def run_stock_analysis(
@@ -73,7 +50,8 @@ def run_stock_analysis(
     Returns:
         Final investment opinion as markdown text
     """
-    crew = create_stock_analysis_crew()
+    # Create agents
+    agents = create_agents()
 
     # Extract data for agents
     tech = analysis_data.get("technical_indicators", {})
@@ -171,7 +149,7 @@ def run_stock_analysis(
 - 목표가: $XXX (근거 포함)
 - 핵심 논거: (3가지)
 """,
-        agent=crew.agents[0],  # Fundamental Analyst
+        agent=agents['fundamental'],
         expected_output="펀더멘털 분석 의견 (등급, 목표가, 근거)"
     )
 
@@ -194,7 +172,7 @@ def run_stock_analysis(
 - 시장 심리: [과열/정상/과냉]
 - 핵심 논거: (3가지)
 """,
-        agent=crew.agents[1],  # Sentiment Analyst
+        agent=agents['sentiment'],
         expected_output="심리 분석 의견 (등급, 시장 심리, 근거)"
     )
 
@@ -218,7 +196,7 @@ def run_stock_analysis(
 - 익절가: $XXX, 손절가: $XXX
 - 핵심 논거: (3가지)
 """,
-        agent=crew.agents[2],  # Valuation Analyst
+        agent=agents['valuation'],
         expected_output="기술적 분석 의견 (등급, 진입/익절/손절가, 근거)"
     )
 
@@ -245,7 +223,7 @@ def run_stock_analysis(
 - 핵심 논거: (3가지)
 - 경고 사항: (있다면)
 """,
-        agent=crew.agents[3],  # Risk Control Agent
+        agent=agents['risk_control'],
         expected_output="리스크 관리 의견 (등급, 적정 비중, 집중도 리스크, 근거)"
     )
 
@@ -310,23 +288,34 @@ def run_stock_analysis(
 - 주의 깊게 볼 지표
 - 재평가 시점
 """,
-        agent=crew.agents[4],  # Moderator
+        agent=agents['moderator'],
         expected_output="최종 투자 의견서 (구조화된 마크다운)",
         context=[task_fundamental, task_sentiment, task_valuation, task_risk_control]
     )
 
-    # Create tasks list
-    tasks = [
-        task_fundamental,
-        task_sentiment,
-        task_valuation,
-        task_risk_control,
-        task_decision
-    ]
-
-    # Execute crew with tasks
+    # Create crew with tasks
     try:
-        result = crew.kickoff(tasks=tasks)
+        crew = Crew(
+            agents=[
+                agents['fundamental'],
+                agents['sentiment'],
+                agents['valuation'],
+                agents['risk_control'],
+                agents['moderator']
+            ],
+            tasks=[
+                task_fundamental,
+                task_sentiment,
+                task_valuation,
+                task_risk_control,
+                task_decision
+            ],
+            process=Process.sequential,
+            verbose=True
+        )
+
+        # Execute
+        result = crew.kickoff()
         return str(result)
     except Exception as e:
         return f"""# 분석 오류
