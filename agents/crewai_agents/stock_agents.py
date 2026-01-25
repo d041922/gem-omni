@@ -75,6 +75,7 @@ def create_sentiment_analyst() -> Agent:
         - 군중 심리에 따른 매수/매도 의견 제시
         - 다른 에이전트의 의견에 심리적 관점에서 보완 또는 경고
         """,
+        llm=gemini_llm,
         verbose=True,
         allow_delegation=False
     )
@@ -108,6 +109,7 @@ def create_valuation_analyst() -> Agent:
         - 과매수 구간에서도 ADX가 높으면 추세 지속 가능성 판단
         - 다른 에이전트의 의견에 기술적 타이밍 관점에서 조언
         """,
+        llm=gemini_llm,
         verbose=True,
         allow_delegation=False
     )
@@ -147,6 +149,7 @@ def create_risk_control_agent() -> Agent:
         - 분산 투자를 위한 구체적 대안 제시 (예: "PLTR 대신 반도체 ETF")
         - 매수 의견에도 적정 투자 비중 제안 (예: "포트폴리오의 최대 10%")
         """,
+        llm=gemini_llm,
         verbose=True,
         allow_delegation=False
     )
@@ -186,6 +189,7 @@ def create_moderator() -> Agent:
         - 반대 의견(Devil's Advocate)도 반드시 포함
         - 리스크 관리자의 집중도 경고를 최종 의견에 반영
         """,
+        llm=gemini_llm,
         verbose=True,
         allow_delegation=False
     )
