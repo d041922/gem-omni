@@ -5,64 +5,98 @@ Unified portfolio data access and checks
 Solves:
   - stock_analysis.py와 stock_analysis_crew.py의 포트폴리오 체크 로직 불일치 문제
   - 중복 코드 제거
-
-Usage:
-    from skills.portfolio_utils import check_portfolio_holding, get_portfolio_context_for_ai
-
-    # Check if ticker is in portfolio
-    holding = check_portfolio_holding('NVDA')
-    if holding:
-        print(f"보유 중: {holding['quantity']}주, 수익률 {holding['return_pct']}%")
-
-    # Get AI context
-    context = get_portfolio_context_for_ai('NVDA')
+  - 홈 화면 및 각 페이지 데이터 로딩 통합
 """
 
 import streamlit as st
 import pandas as pd
-from typing import Optional, Dict, Any
+import yfinance as yf
+from typing import Optional, Dict, Any, Tuple
+from skills.gsheet_loader import load_data_from_gsheet
+from skills.finance_core_lib import calculate_portfolio_metrics
+
+
+def load_portfolio_data(force_refresh: bool = False) -> Tuple[pd.DataFrame, Dict[str, float]]:
+    """
+    Unified portfolio data loader with caching.
+    Ensures data is available for all pages (Home, Dashboard, Analysis).
+
+    Args:
+        force_refresh: If True, bypass cache and reload from GSheet/YFinance
+
+    Returns:
+        (calculated_df, current_prices_dict)
+    """
+    # 1. Check if already in session state and not forcing refresh
+    if not force_refresh and 'calculated_portfolio' in st.session_state:
+        return st.session_state.calculated_portfolio, st.session_state.get('current_prices', {})
+
+    # 2. Load from Google Sheets
+    try:
+        # Use a container for status messages if we're in a script with UI
+        with st.spinner("⏳ 구글 시트에서 포트폴리오 로드 중..."):
+            portfolio_df, watchlist_df, cash_df = load_data_from_gsheet("GEM_Finance_Portfolio")
+            st.session_state.raw_portfolio_df = portfolio_df
+            st.session_state.watchlist_df = watchlist_df
+            st.session_state.cash_df = cash_df
+
+        # 3. Fetch current prices
+        with st.spinner("🚀 실시간 주가 데이터 수집 중..."):
+            current_prices = {}
+            ticker_col = '종목코드' if '종목코드' in portfolio_df.columns else '티커코드'
+
+            if ticker_col in portfolio_df.columns:
+                tickers = portfolio_df[ticker_col].dropna().unique()
+                for ticker in tickers:
+                    try:
+                        # Optimization: Use existing price if not forcing refresh
+                        if not force_refresh and 'current_prices' in st.session_state and ticker in st.session_state.current_prices:
+                            current_prices[ticker] = st.session_state.current_prices[ticker]
+                            continue
+                            
+                        stock = yf.Ticker(str(ticker))
+                        # Use fast_info for performance
+                        price = stock.fast_info.get('last_price', None)
+                        if price is None:
+                            hist = stock.history(period='1d')
+                            if not hist.empty:
+                                price = hist['Close'].iloc[-1]
+                        
+                        if price:
+                            current_prices[ticker] = float(price)
+                    except:
+                        pass
+
+        # 4. Calculate metrics
+        exchange_rate = 1450  # TODO: Fetch real exchange rate
+        calculated_df = calculate_portfolio_metrics(portfolio_df, current_prices, exchange_rate)
+        
+        # 5. Store in session state
+        st.session_state.calculated_portfolio = calculated_df
+        st.session_state.current_prices = current_prices
+        st.session_state.cash_df = cash_df # Ensure cash_df is explicitly saved here
+        
+        return calculated_df, current_prices
+
+    except Exception as e:
+        st.error(f"포트폴리오 로딩 실패: {e}")
+        return pd.DataFrame(), {}
 
 
 def load_portfolio_from_session() -> Optional[pd.DataFrame]:
     """
-    Load portfolio from session state
-
-    Returns:
-        Portfolio DataFrame or None if not available
+    Load portfolio from session state or load it if missing
     """
     if 'calculated_portfolio' in st.session_state:
         return st.session_state.calculated_portfolio
-    elif 'raw_portfolio_df' in st.session_state:
-        return st.session_state.raw_portfolio_df
     else:
-        return None
+        df, _ = load_portfolio_data()
+        return df if not df.empty else None
 
 
 def check_portfolio_holding(ticker: str) -> Optional[Dict[str, Any]]:
     """
     Check if ticker is in user's portfolio (UNIFIED VERSION)
-
-    Solves: stock_analysis.py:20-57 vs stock_analysis_crew.py:119-150 불일치
-
-    Args:
-        ticker: Stock ticker (e.g., 'NVDA', '005930.KS')
-
-    Returns:
-        Dict with holding info or None if not found
-
-        Example return:
-        {
-            'ticker': 'NVDA',
-            'name': '엔비디아',
-            'quantity': 100.0,
-            'avg_price_usd': 120.5,
-            'avg_price_krw': 174725.0,
-            'current_value': 20000000.0,
-            'profit_loss': 3000000.0,
-            'return_pct': 15.0,
-            'sector': 'AI/반도체',
-            'account': 'ISA 계좌'
-        }
     """
     portfolio_df = load_portfolio_from_session()
 
@@ -92,7 +126,7 @@ def check_portfolio_holding(ticker: str) -> Optional[Dict[str, Any]]:
 
     row = match.iloc[0]
 
-    # Extract data (handle multiple possible column names)
+    # Extract data
     name = row.get('종목명', row.get('name', ticker))
     quantity = float(row.get('수량', 0))
     avg_price_usd = float(row.get('평균 단가(USD)', row.get('avg_price_usd', 0)))
@@ -120,14 +154,6 @@ def check_portfolio_holding(ticker: str) -> Optional[Dict[str, Any]]:
 def get_portfolio_context_for_ai(ticker: str) -> str:
     """
     Generate portfolio context text for AI agents (UNIFIED VERSION)
-
-    Used by: stock_analysis_crew.py
-
-    Args:
-        ticker: Stock ticker to check
-
-    Returns:
-        Markdown formatted portfolio context for AI prompt
     """
     portfolio_df = load_portfolio_from_session()
 
@@ -199,30 +225,20 @@ def get_portfolio_context_for_ai(ticker: str) -> str:
 def get_portfolio_summary() -> Optional[Dict[str, Any]]:
     """
     Get portfolio summary statistics
-
-    Returns:
-        {
-            'total_value': float,
-            'total_cost': float,
-            'total_profit': float,
-            'return_pct': float,
-            'num_holdings': int,
-            'sectors': Dict[str, float]  # sector -> percentage
-        }
     """
     portfolio_df = load_portfolio_from_session()
 
     if portfolio_df is None or portfolio_df.empty:
         return None
 
-    total_value = portfolio_df.get('평가금액(KRW)', pd.Series([0])).sum()
-    total_cost = portfolio_df.get('매수금액(KRW)', pd.Series([0])).sum()
-    total_profit = portfolio_df.get('손익(KRW)', pd.Series([0])).sum()
+    total_value = portfolio_df['평가금액(KRW)'].sum() if '평가금액(KRW)' in portfolio_df.columns else 0
+    total_cost = portfolio_df['매수금액(KRW)'].sum() if '매수금액(KRW)' in portfolio_df.columns else 0
+    total_profit = portfolio_df['손익(KRW)'].sum() if '손익(KRW)' in portfolio_df.columns else 0
     return_pct = (total_profit / total_cost * 100) if total_cost > 0 else 0
 
     # Sector distribution
     sectors = {}
-    if '카테고리' in portfolio_df.columns and '평가금액(KRW)' in portfolio_df.columns:
+    if '카테고리' in portfolio_df.columns:
         sector_values = portfolio_df.groupby('카테고리')['평가금액(KRW)'].sum()
         sectors = {sector: (value / total_value * 100) for sector, value in sector_values.items()}
 
@@ -234,18 +250,3 @@ def get_portfolio_summary() -> Optional[Dict[str, Any]]:
         'num_holdings': len(portfolio_df),
         'sectors': sectors
     }
-
-
-# Example usage
-if __name__ == '__main__':
-    # This would be run in Streamlit context
-    print("Portfolio Utils - Test (requires Streamlit session_state)")
-
-    # Example 1: Check holding
-    # holding = check_portfolio_holding('NVDA')
-    # if holding:
-    #     print(f"Found: {holding['name']}, {holding['quantity']} shares")
-
-    # Example 2: Get AI context
-    # context = get_portfolio_context_for_ai('NVDA')
-    # print(context)

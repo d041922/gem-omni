@@ -1,455 +1,226 @@
 """
-Valuation Engine - 종합 밸류에이션 분석
-PER, PEG, P/S, ROE 등 다각도 밸류에이션 + 역사적 평균 비교
+Valuation Engine - 엄격한 데이터 기반 밸류에이션 분석
+추측성 기본값이나 평균값을 배제하고, 실제 수집된 팩터 데이터로만 분석함.
 """
 import yfinance as yf
 import pandas as pd
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 
 class ValuationEngine:
-    """종합 밸류에이션 분석 엔진"""
-
     def __init__(self):
-        pass
+        self.cyclical_sectors = ['Energy', 'Basic Materials', 'Industrials']
 
     def calculate_valuation_metrics(self, ticker: str) -> Dict:
-        """
-        종합 밸류에이션 분석
-
-        Returns:
-            {
-                'ticker': 'NVDA',
-                'multiples': {
-                    'pe_ratio': 40.5,
-                    'peg_ratio': 0.15,  # < 1.0 = 저평가
-                    'price_to_sales': 18.2,
-                    'price_to_book': 15.3,
-                    'ev_to_ebitda': 35.2
-                },
-                'profitability': {
-                    'roe': 85.3,  # Return on Equity
-                    'roa': 45.2,  # Return on Assets
-                    'roic': 65.1  # Return on Invested Capital (추정)
-                },
-                'cash_flow': {
-                    'fcf_yield': 2.1,  # Free Cash Flow Yield
-                    'fcf_per_share': 12.50,
-                    'fcf_growth_yoy': 125.3
-                },
-                'historical_comparison': {
-                    'pe_vs_avg': '+43%',  # 역사적 평균 대비
-                    'ps_vs_avg': '+50%',
-                    'assessment': 'elevated'  # undervalued/fair/elevated/overvalued
-                },
-                'sector_comparison': {
-                    'pe_vs_sector': '+43%',  # 섹터 평균 대비
-                    'premium_justified': True,
-                    'reason': '성장률 섹터 평균 3배'
-                },
-                'valuation_score': 6.5,  # 0-10 (높을수록 저평가)
-                'assessment': 'fair_value',  # undervalued/fair_value/overvalued
-                'summary': 'PEG 0.15로 성장률 대비 매우 저평가, 단 절대 밸류에이션 높음'
-            }
-        """
+        """종합 밸류에이션 분석"""
         try:
             stock = yf.Ticker(ticker)
             info = stock.info
+            is_korean = ticker.endswith(('.KS', '.KQ'))
+            
+            # 1. 기초 데이터 수집
+            multiples = self._get_multiples_strictly(info)
+            profitability = self._get_profitability_strictly(info)
+            
+            # 2. 한국 주식 데이터 보정 (네이버 크롤러 활용)
+            if is_korean:
+                from skills.kr_market_crawler import get_kr_stock_info
+                kr_data = get_kr_stock_info(ticker)
+                # yfinance 데이터가 없을 때만 크롤링 데이터로 보완
+                if kr_data:
+                    if not multiples.get('pe_ratio'): multiples['pe_ratio'] = kr_data.get('pe_ratio')
+                    if not multiples.get('price_to_book'): multiples['price_to_book'] = kr_data.get('price_to_book')
+                    if not profitability.get('roe'): profitability['roe'] = kr_data.get('roe')
 
-            # 1. Multiples
-            multiples = self._get_multiples(info)
+            # 3. 필수 데이터 존재 여부 확인
+            has_fundamental_data = any([
+                multiples.get('pe_ratio'), 
+                multiples.get('price_to_book'), 
+                info.get('revenueGrowth')
+            ])
 
-            # 2. Profitability
-            profitability = self._get_profitability(info)
+            if not has_fundamental_data:
+                return {
+                    'ticker': ticker,
+                    'status': 'Insufficient Data',
+                    'summary': f"'{ticker}' 종목은 분석에 필요한 핵심 재무 지표(PER, P/B 등)를 불러올 수 없습니다. (데이터 소스: yfinance)",
+                    'valuation_score': 0,
+                    'assessment': 'unknown'
+                }
 
-            # 3. Cash Flow
-            cash_flow = self._get_cash_flow_metrics(stock, info)
-
-            # 4. Historical Comparison
-            historical = self._compare_to_historical(stock, multiples)
-
-            # 5. Sector Comparison
-            sector_comp = self._compare_to_sector(ticker, info, multiples)
-
-            # 6. Valuation Score
-            valuation_score = self._calculate_valuation_score(
-                multiples, profitability, historical, sector_comp
-            )
-
-            # 7. Overall Assessment
-            assessment = self._assess_valuation(valuation_score, multiples)
-
-            # 8. Summary
-            summary = self._generate_summary(multiples, historical, sector_comp, assessment)
+            # 3. 종목 스타일 판별 (실제 데이터 기반)
+            style, style_reason = self._determine_stock_style(info, multiples, profitability)
+            
+            # 4. 스타일별 분석 (데이터가 있는 항목만 계산)
+            if style == 'Growth':
+                analysis = self._analyze_as_growth(info, multiples, profitability)
+            elif style == 'Value':
+                analysis = self._analyze_as_value(info, multiples, profitability)
+            elif style == 'Cyclical':
+                analysis = self._analyze_as_cyclical(stock, info, multiples)
+            else:
+                analysis = self._analyze_as_hybrid(info, multiples, profitability)
 
             return {
                 'ticker': ticker,
+                'name': info.get('longName', ticker),
+                'style': style,
+                'style_reason': style_reason,
                 'multiples': multiples,
                 'profitability': profitability,
-                'cash_flow': cash_flow,
-                'historical_comparison': historical,
-                'sector_comparison': sector_comp,
-                'valuation_score': valuation_score,
-                'assessment': assessment,
-                'summary': summary
+                'style_analysis': analysis,
+                'valuation_score': analysis.get('score', 0),
+                'assessment': analysis.get('assessment', 'unknown'),
+                'summary': analysis.get('summary', '')
             }
 
         except Exception as e:
             return {'error': str(e), 'ticker': ticker}
 
-    def _get_multiples(self, info: Dict) -> Dict:
-        """밸류에이션 멀티플 수집"""
+    def _get_multiples_strictly(self, info: Dict) -> Dict:
+        """실제 공시/시장 데이터만 수집 (추측성 Default 제거)"""
+        pe = info.get('trailingPE') or info.get('forwardPE')
+        
+        # 산술적으로 확실한 경우에만 직접 계산 허용
+        if not pe:
+            mcap = info.get('marketCap')
+            income = info.get('netIncomeToCommon')
+            if mcap and income and income > 0:
+                pe = mcap / income # 공식: 시가총액 / 순이익
+
         return {
-            'pe_ratio': info.get('forwardPE', info.get('trailingPE', None)),
-            'peg_ratio': info.get('pegRatio', None),
-            'price_to_sales': info.get('priceToSalesTrailing12Months', None),
-            'price_to_book': info.get('priceToBook', None),
-            'ev_to_ebitda': info.get('enterpriseToEbitda', None),
-            'market_cap_b': round(info.get('marketCap', 0) / 1e9, 1) if info.get('marketCap') else None
+            'pe_ratio': pe,
+            'peg_ratio': info.get('pegRatio'),
+            'price_to_book': info.get('priceToBook'),
+            'price_to_sales': info.get('priceToSalesTrailing12Months')
         }
 
-    def _get_profitability(self, info: Dict) -> Dict:
-        """수익성 지표"""
+    def _get_profitability_strictly(self, info: Dict) -> Dict:
         return {
-            'roe': round(info.get('returnOnEquity', 0) * 100, 1) if info.get('returnOnEquity') else None,
-            'roa': round(info.get('returnOnAssets', 0) * 100, 1) if info.get('returnOnAssets') else None,
-            'roic': None,  # yfinance에서 직접 제공 안 함 (계산 필요)
-            'gross_margin': round(info.get('grossMargins', 0) * 100, 1) if info.get('grossMargins') else None,
-            'operating_margin': round(info.get('operatingMargins', 0) * 100, 1) if info.get('operatingMargins') else None,
-            'net_margin': round(info.get('profitMargins', 0) * 100, 1) if info.get('profitMargins') else None
+            'roe': info.get('returnOnEquity', 0) * 100 if info.get('returnOnEquity') else None,
+            'net_margin': info.get('profitMargins', 0) * 100 if info.get('profitMargins') else None
         }
+
+    def _determine_stock_style(self, info: Dict, multiples: Dict, profit: Dict) -> Tuple[str, str]:
+        sector = info.get('sector', '')
+        revenue_growth = (info.get('revenueGrowth') or 0) * 100
+        peg = multiples.get('peg_ratio')
+        pb = multiples.get('price_to_book')
+        roe = profit.get('roe')
+
+        if sector in self.cyclical_sectors:
+            return 'Cyclical', f"{sector} 섹터 기반 경기 민감주"
+
+        # 데이터가 있는 경우에만 성장주 판별
+        if revenue_growth > 15 or (peg and peg < 1.5):
+            return 'Growth', "높은 성장성 지표 기반 성장주"
+
+        if pb and pb < 2.5:
+            return 'Value', "자산 가치(P/B) 기반 가치주"
+
+        return 'Hybrid', "복합적 지표를 가진 일반 종목"
+
+    def _analyze_as_growth(self, info: Dict, multiples: Dict, profit: Dict) -> Dict:
+        peg = multiples.get('peg_ratio')
+        roe = profit.get('roe')
+        pe = multiples.get('pe_ratio')
+        
+        # 데이터가 없는 항목은 점수에서 제외
+        score = 0
+        weights = 0
+        
+        if peg:
+            weights += 50
+            if peg < 1.0: score += 50
+            elif peg < 1.5: score += 30
+            
+        if roe:
+            weights += 30
+            if roe > 25: score += 30
+            elif roe > 15: score += 15
+            
+        if pe:
+            weights += 20
+            if pe < 30: score += 20
+            elif pe < 50: score += 10
+
+        final_score = (score / weights * 10) if weights > 0 else 0
+        assessment = 'undervalued' if final_score >= 7 else 'fair_value' if final_score >= 4 else 'overvalued'
+        
+        missing = []
+        if not peg: missing.append("PEG")
+        if not roe: missing.append("ROE")
+        
+        summary = f"성장주 분석: 실측 데이터 기반 점수 {final_score:.1f}/10 ({assessment})."
+        if missing: summary += f" (참고: {', '.join(missing)} 데이터 부재로 분석 제한됨)"
+        
+        return {'score': round(final_score, 1), 'assessment': assessment, 'summary': summary, 'key_metrics': {'PEG': peg, 'ROE': roe}}
+
+    def _analyze_as_value(self, info: Dict, multiples: Dict, profit: Dict) -> Dict:
+        pb = multiples.get('price_to_book')
+        pe = multiples.get('pe_ratio')
+        div = (info.get('dividendYield') or 0) * 100
+        
+        score = 0
+        weights = 0
+        
+        if pb:
+            weights += 40
+            if pb < 1.2: score += 40
+            elif pb < 2.0: score += 20
+            
+        if pe:
+            weights += 30
+            if pe < 12: score += 30
+            elif pe < 18: score += 15
+            
+        if div > 0:
+            weights += 30
+            if div > 4.0: score += 30
+            elif div > 2.0: score += 15
+
+        final_score = (score / weights * 10) if weights > 0 else 0
+        assessment = 'undervalued' if final_score >= 7 else 'fair_value' if final_score >= 4 else 'overvalued'
+        
+        return {'score': round(final_score, 1), 'assessment': assessment, 'summary': f"가치주 분석: 실측 데이터 기반 점수 {final_score:.1f}/10", 'key_metrics': {'P/B': pb, '배당': f"{div:.1f}%"}}
+
+    def _analyze_as_cyclical(self, stock, info: Dict, multiples: Dict) -> Dict:
+        # 경기주는 과거 데이터가 필수
+        try:
+            hist = stock.history(period='5y')
+            if hist.empty: raise ValueError("No history")
+            curr = hist['Close'].iloc[-1]
+            avg = hist['Close'].mean()
+            pos = curr / avg
+            
+            pb = multiples.get('price_to_book')
+            score = 0
+            if pos < 0.8: score += 5
+            if pb and pb < 1.2: score += 5
+            
+            assessment = 'undervalued' if score >= 7 else 'fair_value'
+            return {'score': float(score), 'assessment': assessment, 'summary': f"경기주 분석: 과거 5년 평균가 대비 {pos:.1f}x 위치 (점수: {score}/10)"}
+        except:
+            return {'score': 0, 'assessment': 'unknown', 'summary': "과거 주가 데이터 부재로 경기 사이클 분석 불가"}
+
+    def _analyze_as_hybrid(self, info: Dict, multiples: Dict, profit: Dict) -> Dict:
+        pe = multiples.get('pe_ratio')
+        roe = profit.get('roe')
+        if pe and roe:
+            score = (5 if pe < 20 else 0) + (5 if roe > 15 else 0)
+            return {'score': float(score), 'assessment': 'fair_value' if score >= 5 else 'overvalued', 'summary': "일반 종목 분석 수행 완료"}
+        return {'score': 0, 'assessment': 'unknown', 'summary': "기초 데이터 부족으로 분석 불가"}
 
     def _get_cash_flow_metrics(self, stock, info: Dict) -> Dict:
-        """현금 흐름 지표"""
+        # 현금흐름은 있으면 좋고 없으면 0
         try:
-            # Free Cash Flow
-            cash_flow_stmt = stock.cashflow
-
-            fcf = None
-            fcf_growth = None
-
-            if not cash_flow_stmt.empty:
-                # Free Cash Flow 행 찾기
-                for idx in cash_flow_stmt.index:
-                    if 'Free Cash Flow' in str(idx):
-                        fcf_data = cash_flow_stmt.loc[idx].head(2).tolist()
-                        if len(fcf_data) >= 1:
-                            fcf = fcf_data[0]
-
-                            # YoY Growth
-                            if len(fcf_data) >= 2 and fcf_data[1] != 0:
-                                fcf_growth = ((fcf_data[0] - fcf_data[1]) / abs(fcf_data[1]) * 100)
-
-                        break
-
-            # FCF Yield
-            market_cap = info.get('marketCap', 0)
-            fcf_yield = None
-            if fcf and market_cap > 0:
-                fcf_yield = (fcf / market_cap) * 100
-
-            # FCF per Share
-            shares_outstanding = info.get('sharesOutstanding', 0)
-            fcf_per_share = None
-            if fcf and shares_outstanding > 0:
-                fcf_per_share = fcf / shares_outstanding
-
-            return {
-                'fcf': fcf,
-                'fcf_yield': round(fcf_yield, 2) if fcf_yield else None,
-                'fcf_per_share': round(fcf_per_share, 2) if fcf_per_share else None,
-                'fcf_growth_yoy': round(fcf_growth, 1) if fcf_growth else None
-            }
-
-        except Exception as e:
-            return {'fcf': None, 'fcf_yield': None, 'fcf_per_share': None, 'fcf_growth_yoy': None}
-
-    def _compare_to_historical(self, stock, multiples: Dict) -> Dict:
-        """역사적 평균과 비교"""
-        try:
-            # 과거 5년 가격 데이터
-            hist = stock.history(period='5y')
-
-            if hist.empty:
-                return {
-                    'pe_vs_avg': None,
-                    'ps_vs_avg': None,
-                    'assessment': 'unknown'
-                }
-
-            # 간단한 평균 계산 (정확한 역사적 PE는 재무제표 필요)
-            # 현재 vs 평균 위치만 추정
-            current_price = hist['Close'].iloc[-1]
-            avg_price_5y = hist['Close'].mean()
-            price_vs_avg = ((current_price - avg_price_5y) / avg_price_5y * 100)
-
-            # PE ratio
-            current_pe = multiples.get('pe_ratio')
-            pe_vs_avg = None
-
-            # 대략적 평가 (가격 대비)
-            if price_vs_avg > 50:
-                assessment = 'elevated'  # 5년 평균 대비 50% 이상 높음
-            elif price_vs_avg > 20:
-                assessment = 'fair'
-            elif price_vs_avg < -20:
-                assessment = 'undervalued'
-            else:
-                assessment = 'fair'
-
-            return {
-                'price_vs_5y_avg': f"{price_vs_avg:+.1f}%",
-                'pe_vs_avg': pe_vs_avg,  # 정확한 계산 어려움
-                'ps_vs_avg': None,
-                'assessment': assessment
-            }
-
-        except Exception as e:
-            return {
-                'pe_vs_avg': None,
-                'ps_vs_avg': None,
-                'assessment': 'unknown'
-            }
-
-    def _compare_to_sector(self, ticker: str, info: Dict, multiples: Dict) -> Dict:
-        """섹터 평균과 비교"""
-        # 섹터 평균 (대략적, 실제로는 섹터 ETF 데이터 필요)
-        sector = info.get('sector', 'Unknown')
-
-        # 대략적인 섹터 평균 PE (참고용)
-        sector_avg_pe = {
-            'Technology': 28,
-            'Healthcare': 22,
-            'Financials': 12,
-            'Energy': 15,
-            'Consumer Discretionary': 20,
-            'Consumer Staples': 18
-        }
-
-        avg_pe = sector_avg_pe.get(sector, 20)
-        current_pe = multiples.get('pe_ratio')
-
-        pe_vs_sector = None
-        premium_pct = None
-        premium_justified = None
-
-        if current_pe and avg_pe:
-            premium_pct = ((current_pe - avg_pe) / avg_pe * 100)
-            pe_vs_sector = f"{premium_pct:+.1f}%"
-
-            # Premium 정당성 (성장률로 판단)
-            peg = multiples.get('peg_ratio')
-            if peg and peg < 1.0:
-                premium_justified = True
-                reason = f'PEG {peg:.2f} < 1.0, 성장률 대비 저평가'
-            elif premium_pct < 20:
-                premium_justified = True
-                reason = 'Premium 20% 이내, 합리적'
-            else:
-                premium_justified = False
-                reason = f'Premium {premium_pct:.0f}% 과도, 성장률 미반영'
-        else:
-            reason = '비교 데이터 부족'
-
-        return {
-            'sector': sector,
-            'sector_avg_pe': avg_pe,
-            'pe_vs_sector': pe_vs_sector,
-            'premium_pct': round(premium_pct, 1) if premium_pct else None,
-            'premium_justified': premium_justified,
-            'reason': reason
-        }
-
-    def _calculate_valuation_score(
-        self,
-        multiples: Dict,
-        profitability: Dict,
-        historical: Dict,
-        sector_comp: Dict
-    ) -> float:
-        """
-        밸류에이션 스코어 (0-10)
-        10 = 매우 저평가, 0 = 매우 고평가
-
-        요소:
-        - PEG (4점): < 0.5 = 4점, 0.5-1.0 = 3점, 1.0-1.5 = 2점, > 1.5 = 1점
-        - ROE (2점): > 30% = 2점, 20-30% = 1점
-        - FCF Yield (2점): > 5% = 2점, 3-5% = 1점
-        - 역사적 비교 (2점): undervalued = 2점, fair = 1점
-        """
-        score = 0.0
-
-        # PEG (4점)
-        peg = multiples.get('peg_ratio')
-        if peg:
-            if peg < 0.5:
-                score += 4.0
-            elif peg < 1.0:
-                score += 3.0
-            elif peg < 1.5:
-                score += 2.0
-            elif peg < 2.0:
-                score += 1.0
-
-        # ROE (2점)
-        roe = profitability.get('roe')
-        if roe:
-            if roe > 30:
-                score += 2.0
-            elif roe > 20:
-                score += 1.5
-            elif roe > 15:
-                score += 1.0
-
-        # FCF Yield (2점)
-        fcf_yield = multiples.get('fcf_yield')  # 실제로는 cash_flow에 있음
-        # 간단히 생략
-
-        # 역사적 비교 (2점)
-        hist_assessment = historical.get('assessment')
-        if hist_assessment == 'undervalued':
-            score += 2.0
-        elif hist_assessment == 'fair':
-            score += 1.0
-
-        return round(score, 1)
-
-    def _assess_valuation(self, score: float, multiples: Dict) -> str:
-        """종합 평가"""
-        peg = multiples.get('peg_ratio')
-
-        # PEG 우선
-        if peg and peg < 0.8:
-            return 'undervalued'
-        elif peg and peg < 1.5:
-            return 'fair_value'
-
-        # Score 기준
-        if score >= 7:
-            return 'undervalued'
-        elif score >= 5:
-            return 'fair_value'
-        else:
-            return 'overvalued'
-
-    def _generate_summary(
-        self,
-        multiples: Dict,
-        historical: Dict,
-        sector_comp: Dict,
-        assessment: str
-    ) -> str:
-        """요약 생성"""
-        peg = multiples.get('peg_ratio')
-        pe = multiples.get('pe_ratio')
-        premium = sector_comp.get('premium_pct')
-
-        summary_parts = []
-
-        # PEG 평가
-        if peg:
-            if peg < 0.8:
-                summary_parts.append(f"PEG {peg:.2f} → 성장률 대비 매우 저평가")
-            elif peg < 1.5:
-                summary_parts.append(f"PEG {peg:.2f} → 성장률 대비 적정 수준")
-            else:
-                summary_parts.append(f"PEG {peg:.2f} → 성장률 대비 고평가")
-
-        # 절대 밸류에이션
-        if pe:
-            if pe > 40:
-                summary_parts.append(f"PER {pe:.0f} 높음")
-            elif pe > 25:
-                summary_parts.append(f"PER {pe:.0f} 보통")
-            else:
-                summary_parts.append(f"PER {pe:.0f} 낮음")
-
-        # 섹터 비교
-        if premium and sector_comp.get('premium_justified'):
-            summary_parts.append(f"섹터 대비 Premium {premium:.0f}% (정당화 가능)")
-        elif premium:
-            summary_parts.append(f"섹터 대비 Premium {premium:.0f}% (과도)")
-
-        # 종합
-        if assessment == 'undervalued':
-            summary_parts.append("→ 매수 매력적")
-        elif assessment == 'fair_value':
-            summary_parts.append("→ 적정 가격")
-        else:
-            summary_parts.append("→ 고평가 주의")
-
-        return ", ".join(summary_parts)
-
-
-# ========== Standalone Function ==========
+            cf = stock.cashflow
+            if not cf.empty and 'Free Cash Flow' in cf.index:
+                fcf = cf.loc['Free Cash Flow'].iloc[0]
+                mcap = info.get('marketCap', 0)
+                return {'fcf_yield': round(fcf / mcap * 100, 2) if mcap > 0 else 0}
+        except: pass
+        return {'fcf_yield': 0}
 
 def calculate_valuation_metrics(ticker: str) -> Dict:
-    """편의 함수"""
-    engine = ValuationEngine()
-    return engine.calculate_valuation_metrics(ticker)
-
-
-# ========== CLI Test ==========
-
-if __name__ == "__main__":
-    print("=" * 80)
-    print("💰 Valuation Engine Test")
-    print("=" * 80)
-
-    ticker = "NVDA"
-    print(f"\n🔍 Analyzing {ticker} valuation...")
-    print("-" * 80)
-
-    engine = ValuationEngine()
-    result = engine.calculate_valuation_metrics(ticker)
-
-    if 'error' in result:
-        print(f"❌ Error: {result['error']}")
-    else:
-        print(f"\n✅ Valuation analysis completed for {result['ticker']}")
-
-        # Multiples
-        multiples = result['multiples']
-        print(f"\n📊 Valuation Multiples:")
-        print(f"   PE Ratio: {multiples.get('pe_ratio', 'N/A')}")
-        print(f"   PEG Ratio: {multiples.get('peg_ratio', 'N/A')}")
-        print(f"   Price/Sales: {multiples.get('price_to_sales', 'N/A')}")
-        print(f"   Price/Book: {multiples.get('price_to_book', 'N/A')}")
-        print(f"   EV/EBITDA: {multiples.get('ev_to_ebitda', 'N/A')}")
-
-        # Profitability
-        profit = result['profitability']
-        print(f"\n💼 Profitability:")
-        print(f"   ROE: {profit.get('roe', 'N/A')}%")
-        print(f"   ROA: {profit.get('roa', 'N/A')}%")
-        print(f"   Gross Margin: {profit.get('gross_margin', 'N/A')}%")
-        print(f"   Net Margin: {profit.get('net_margin', 'N/A')}%")
-
-        # Cash Flow
-        cf = result['cash_flow']
-        print(f"\n💵 Cash Flow:")
-        print(f"   FCF Yield: {cf.get('fcf_yield', 'N/A')}%")
-        print(f"   FCF per Share: ${cf.get('fcf_per_share', 'N/A')}")
-        print(f"   FCF Growth YoY: {cf.get('fcf_growth_yoy', 'N/A')}%")
-
-        # Comparisons
-        hist = result['historical_comparison']
-        print(f"\n📈 Historical Comparison:")
-        print(f"   Price vs 5Y Avg: {hist.get('price_vs_5y_avg', 'N/A')}")
-        print(f"   Assessment: {hist.get('assessment', 'N/A')}")
-
-        sector = result['sector_comparison']
-        print(f"\n🏢 Sector Comparison:")
-        print(f"   Sector: {sector.get('sector', 'N/A')}")
-        print(f"   PE vs Sector Avg: {sector.get('pe_vs_sector', 'N/A')}")
-        print(f"   Premium Justified: {sector.get('premium_justified', 'N/A')}")
-        print(f"   Reason: {sector.get('reason', 'N/A')}")
-
-        # Overall
-        print(f"\n⭐ Valuation Score: {result['valuation_score']}/10")
-        print(f"🎯 Assessment: {result['assessment']}")
-        print(f"\n💡 Summary:")
-        print(f"   {result['summary']}")
-
-    print("\n" + "=" * 80)
-    print("✅ Test completed!")
+    return ValuationEngine().calculate_valuation_metrics(ticker)

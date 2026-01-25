@@ -90,59 +90,64 @@ def calculate_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_stock_info(ticker: str) -> Dict[str, Any]:
     """
-    Get fundamental stock information (Enhanced with profitability & financial health)
-
-    Args:
-        ticker: Stock ticker symbol
-
-    Returns:
-        Dictionary with stock info
+    Get fundamental stock information (Enhanced with stability and defaults)
     """
     try:
         stock = yf.Ticker(ticker.upper())
         info = stock.info
+
+        # Helper to get numeric with default
+        def get_num(key, default=0):
+            val = info.get(key)
+            return float(val) if val is not None and isinstance(val, (int, float)) else default
 
         # Basic info
         result = {
             "name": info.get("longName", ticker),
             "sector": info.get("sector", "N/A"),
             "industry": info.get("industry", "N/A"),
-            "market_cap": info.get("marketCap", 0),
-            "pe_ratio": info.get("trailingPE", 0),
-            "forward_pe": info.get("forwardPE", 0),
-            "peg_ratio": info.get("pegRatio", 0),
-            "price_to_book": info.get("priceToBook", 0),
-            "dividend_yield": info.get("dividendYield", 0),
-            "beta": info.get("beta", 0),
-            "52week_high": info.get("fiftyTwoWeekHigh", 0),
-            "52week_low": info.get("fiftyTwoWeekLow", 0),
-            "avg_volume": info.get("averageVolume", 0),
-            "description": info.get("longBusinessSummary", "")
+            "market_cap": get_num("marketCap"),
+            "pe_ratio": get_num("trailingPE", get_num("forwardPE")),
+            "forward_pe": get_num("forwardPE", get_num("trailingPE")),
+            "price_to_book": get_num("priceToBook"),
+            "dividend_yield": get_num("dividendYield") * 100,
+            "beta": get_num("beta", 1.0),
+            "52week_high": get_num("fiftyTwoWeekHigh"),
+            "52week_low": get_num("fiftyTwoWeekLow"),
+            "description": info.get("longBusinessSummary", "상세 정보 없음")
         }
 
-        # NEW: Profitability metrics (수익성)
-        result["roe"] = info.get("returnOnEquity", 0) * 100 if info.get("returnOnEquity") else 0
-        result["operating_margin"] = info.get("operatingMargins", 0) * 100 if info.get("operatingMargins") else 0
-        result["profit_margin"] = info.get("profitMargins", 0) * 100 if info.get("profitMargins") else 0
+        # Growth & PEG Fallback
+        revenue_growth = get_num("revenueGrowth") * 100
+        earnings_growth = get_num("earningsQuarterlyGrowth") * 100
+        if earnings_growth == 0: earnings_growth = 15.0 # Default assumption
+        
+        peg = info.get("pegRatio")
+        if (peg is None or peg == 0) and result["pe_ratio"] > 0:
+            peg = result["pe_ratio"] / earnings_growth if earnings_growth > 0 else 0
+        
+        result["peg_ratio"] = float(peg) if peg else 0
+        result["revenue_growth"] = revenue_growth
+        result["eps_growth"] = earnings_growth
 
-        # NEW: Financial health (재무 건전성)
-        result["debt_to_equity"] = info.get("debtToEquity", 0)
-        result["current_ratio"] = info.get("currentRatio", 0)
-        result["quick_ratio"] = info.get("quickRatio", 0)
+        # Profitability
+        result["roe"] = get_num("returnOnEquity") * 100
+        result["operating_margin"] = get_num("operatingMargins") * 100
+        result["profit_margin"] = get_num("profitMargins") * 100
 
-        # NEW: Growth metrics (성장성)
-        result["eps_growth"] = info.get("earningsQuarterlyGrowth", 0) * 100 if info.get("earningsQuarterlyGrowth") else 0
-        result["revenue_growth"] = info.get("revenueGrowth", 0) * 100 if info.get("revenueGrowth") else 0
-
-        # NEW: Valuation metrics (가치 평가)
-        result["ev_to_ebitda"] = info.get("enterpriseToEbitda", 0)
-        result["price_to_sales"] = info.get("priceToSalesTrailing12Months", 0)
+        # Financial health
+        result["debt_to_equity"] = get_num("debtToEquity")
+        result["current_ratio"] = get_num("currentRatio")
+        
+        # Valuation
+        result["ev_to_ebitda"] = get_num("enterpriseToEbitda")
+        result["price_to_sales"] = get_num("priceToSalesTrailing12Months")
 
         return result
 
     except Exception as e:
         print(f"Error fetching info for {ticker}: {e}")
-        return {"name": ticker, "error": str(e)}
+        return {"name": ticker, "error": str(e), "sector": "N/A", "pe_ratio": 0, "peg_ratio": 0}
 
 
 def analyze_stock(ticker: str, period: str = "1y") -> Dict[str, Any]:
@@ -276,70 +281,55 @@ def analyze_stock(ticker: str, period: str = "1y") -> Dict[str, Any]:
 
 def generate_ai_analysis(analysis_result: Dict[str, Any]) -> str:
     """
-    Generate AI-powered stock analysis using Gemini (Token-Optimized)
-
-    Args:
-        analysis_result: Result from analyze_stock()
-
-    Returns:
-        AI analysis text
+    Generate AI-powered stock analysis using Gemini (Style-Aware)
     """
     from google import genai
     import os
+    from skills.valuation_engine import calculate_valuation_metrics
 
     if not analysis_result.get("success"):
         return "분석 실패: 데이터를 가져올 수 없습니다."
 
-    # Load system prompt from file (Cacheable!)
-    prompt_file = Path(__file__).parent.parent / ".claude" / "prompts" / "stock-analyst.md"
+    ticker = analysis_result.get("ticker")
+    summary = analysis_result.get("summary", {})
+    
+    # 1. Fetch the new style-aware valuation data
+    valuation = calculate_valuation_metrics(ticker)
+    style = valuation.get('style', 'Hybrid')
+    v_score = valuation.get('valuation_score', 0)
+    v_summary = valuation.get('summary', '')
 
+    # 2. Load system prompt
+    from pathlib import Path
+    prompt_file = Path(__file__).parent.parent / ".claude" / "prompts" / "stock-analyst.md"
+    system_prompt = ""
     if prompt_file.exists():
         with open(prompt_file, 'r', encoding='utf-8') as f:
             system_prompt = f.read()
-    else:
-        system_prompt = "당신은 전문 주식 애널리스트입니다."
-
-    # Replace placeholder
-    data_file = analysis_result.get("data_file", "")
-    system_prompt = system_prompt.replace('[DATA_FILE_PATH]', data_file)
-
-    # Create concise user prompt (< 200 tokens)
-    summary = analysis_result.get("summary", {})
+    
+    # 3. Create context-rich user prompt
     tech = summary.get("technical_indicators", {})
     fund = summary.get("fundamentals", {})
     news = summary.get("news_sentiment", {})
 
-    user_prompt = f"""종목: {summary.get('ticker')} ({summary.get('name')})
-데이터 파일: {data_file}
+    user_prompt = f"""당신은 마스터를 보좌하는 전략 에이전트 [GEM: OMNI]입니다.
+종목: {ticker} ({summary.get('name')})
+종목 성격: {style} ({valuation.get('style_reason')})
+밸류에이션 점수: {v_score}/10 | 결과: {v_summary}
 
-## 현재 상태
-- 현재가: ${summary.get('current_price', 0):.2f}
-- 변동: {summary.get('price_change_pct', 0):+.2f}%
-- 52주 범위: ${summary.get('52week_low', 0):.2f} - ${summary.get('52week_high', 0):.2f}
-- 현재 위치: {summary.get('position_52w_pct', 0):.1f}%
+## 분석 데이터 요약
+- 현재가: ${summary.get('current_price', 0):.2f} ({summary.get('price_change_pct', 0):+.2f}%)
+- 기술적 지표: RSI {tech.get('rsi', 0):.1f}, 추세강도 ADX {tech.get('adx', 0):.1f}, 자금흐름 MFI {tech.get('mfi', 0):.1f}
+- 재무 지표: PER {fund.get('pe_ratio', 0):.1f}, PBR {fund.get('price_to_book', 0):.2f}, ROE {fund.get('roe', 0):.1f}%
+- 뉴스 심리: {news.get('overall', '중립')} ({news.get('summary', '소식 없음')})
 
-## 기술적 지표
-- RSI: {tech.get('rsi', 0):.1f}, MACD: {tech.get('macd', 0):.2f}
-- ADX: {tech.get('adx', 0):.1f} (추세 강도), MFI: {tech.get('mfi', 0):.1f} (자금 흐름)
-- MA20: ${tech.get('ma20', 0):.2f}, MA60: ${tech.get('ma60', 0):.2f}
-- 볼린저: ${tech.get('bb_lower', 0):.2f} ~ ${tech.get('bb_upper', 0):.2f}
-- 파라볼릭 SAR: ${tech.get('psar', 0):.2f} (추세: {'상승' if tech.get('psar_trend', 0) > 0 else '하락'})
+## 리포트 작성 가이드
+1. **{style} 관점의 평가**: 이 종목의 성격에 맞는 핵심 지표를 중심으로 현재 주가가 매력적인지 논리적으로 설명하세요.
+2. **미래 가치 진단**: 성장주라면 미래 이익 대비 저평가 여부를, 가치주라면 안전마진을 언급하세요.
+3. **전략적 제안 (Action)**: '적극 매수', '보유', '비중 축소' 중 하나를 선택하고 구체적인 이유와 목표가를 제시하세요.
+4. **마스터를 위한 넛지**: 이 종목을 포트폴리오에 담았을 때의 기대 효과를 한 문장으로 요약하세요.
 
-## 펀더멘털
-- 섹터: {fund.get('sector', 'N/A')}
-- 밸류에이션: PER {fund.get('pe_ratio', 0):.1f}, PBR {fund.get('price_to_book', 0):.2f}, EV/EBITDA {fund.get('ev_to_ebitda', 0):.1f}
-- 수익성: ROE {fund.get('roe', 0):.1f}%, 영업이익률 {fund.get('operating_margin', 0):.1f}%
-- 재무건전성: 부채비율 {fund.get('debt_to_equity', 0):.1f}, 유동비율 {fund.get('current_ratio', 0):.2f}
-- 성장성: EPS 성장률 {fund.get('eps_growth', 0):+.1f}%, 매출 성장률 {fund.get('revenue_growth', 0):+.1f}%
-- 베타: {fund.get('beta', 0):.2f}
-
-## 뉴스 및 시장 심리 (NEW - Phase 2)
-- 뉴스 개수: {news.get('news_count', 0)}개
-- 감성 분석: 긍정 {news.get('positive', 0):.0f}% / 중립 {news.get('neutral', 0):.0f}% / 부정 {news.get('negative', 0):.0f}%
-- 종합 평가: {news.get('overall', '중립')} (신뢰도: {news.get('confidence', '낮음')})
-- 요약: {news.get('summary', '뉴스 없음')}
-
-위 데이터를 바탕으로 Bottom-Up 분석 5개 차원을 모두 고려하여 투자 의견을 작성하세요."""
+전문적이고 전략적인 톤(CFA 스타일)으로 한국어로 작성하세요."""
 
     full_prompt = f"{system_prompt}\n\n{user_prompt}"
 

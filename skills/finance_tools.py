@@ -39,3 +39,39 @@ def calculate_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df['MACD'] = ema12 - ema26
     df['Signal_Line'] = df['MACD'].ewm(span=9, adjust=False).mean()
     return df
+
+@st.cache_data(ttl=300)  # 5분 캐싱
+def fetch_market_data() -> Dict[str, Dict[str, float]]:
+    """Fetch real-time market data from yfinance (S&P500, NASDAQ, KOSPI, VIX)"""
+    indices = {
+        "S&P 500": "^GSPC",
+        "NASDAQ": "^IXIC",
+        "KOSPI": "^KS11",
+        "VIX": "^VIX"
+    }
+
+    market_data = {}
+    for name, ticker in indices.items():
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period='2d')
+
+            if len(hist) >= 2:
+                current = hist['Close'].iloc[-1]
+                previous = hist['Close'].iloc[-2]
+                change_pct = ((current - previous) / previous) * 100
+
+                market_data[name] = {
+                    'value': current,
+                    'change': change_pct
+                }
+            else:
+                # Handle case where 2nd day might not be available yet (e.g. market just opened)
+                if not hist.empty:
+                    market_data[name] = {'value': hist['Close'].iloc[-1], 'change': 0}
+                else:
+                    market_data[name] = {'value': 0, 'change': 0}
+        except Exception:
+            market_data[name] = {'value': 0, 'change': 0}
+
+    return market_data

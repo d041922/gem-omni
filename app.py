@@ -6,6 +6,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from core.memory import MemorySystem
 from agents.crews.finance_crew import FinanceCrew
 from pages.stock_analysis import render_stock_analysis_page
+from skills.finance_tools import fetch_market_data
 import yfinance as yf
 from datetime import datetime, timedelta
 
@@ -40,183 +41,83 @@ if 'finance_crew' not in st.session_state:
         spreadsheet_name="GEM_Finance_Portfolio"
     )
 
+# --- 3.6 Global Data Loading ---
+from skills.portfolio_utils import load_portfolio_data
+if 'calculated_portfolio' not in st.session_state:
+    load_portfolio_data()
+
 # --- 3.5 Sidebar Navigation ---
 st.sidebar.title("💎 GEM: OMNI")
 st.sidebar.markdown("---")
 
+def clear_analysis_state():
+    if 'current_stock_analysis' in st.session_state: del st.session_state.current_stock_analysis
+    if 'ai_stock_analysis' in st.session_state: del st.session_state.ai_stock_analysis
+
 page = st.sidebar.radio(
-    "Navigation",
-    options=["🏠 Home", "📊 Portfolio Dashboard", "🌍 시장 정보", "🔍 Stock Analysis"],
-    index=0  # Default to Home
+    "메뉴 선택",
+    options=["🏠 홈 대시보드", "📊 포트폴리오 관리", "🌍 글로벌 시장 정보", "🔍 종목 심층 분석"],
+    index=0,
+    on_change=clear_analysis_state
 )
 
 st.sidebar.markdown("---")
-st.sidebar.caption("Token-Optimized AI Analysis")
+st.sidebar.caption("토큰 최적화 AI 분석 엔진")
 st.sidebar.caption("Powered by Gemini & CrewAI")
 
 # --- 4. Top Bar (Global Market Pulse) ---
-@st.cache_data(ttl=300)  # Cache for 5 minutes
-def fetch_market_data():
-    """Fetch real-time market data from yfinance"""
-    indices = {
-        "S&P 500": "^GSPC",
-        "NASDAQ": "^IXIC",
-        "KOSPI": "^KS11",
-        "VIX": "^VIX"
-    }
-
-    market_data = {}
-    for name, ticker in indices.items():
-        try:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period='2d')
-
-            if len(hist) >= 2:
-                current = hist['Close'].iloc[-1]
-                previous = hist['Close'].iloc[-2]
-                change_pct = ((current - previous) / previous) * 100
-
-                market_data[name] = {
-                    'value': current,
-                    'change': change_pct
-                }
-            else:
-                market_data[name] = {'value': 0, 'change': 0}
-        except:
-            market_data[name] = {'value': 0, 'change': 0}
-
-    return market_data
-
-# Fetch market data
-market_data = fetch_market_data()
-
-# Market pulse banner
-st.markdown("<p class='panel-header'>🌍 Global Market Pulse</p>", unsafe_allow_html=True)
-m1, m2, m3, m4 = st.columns(4)
-
-# S&P 500
-sp500 = market_data.get("S&P 500", {})
-m1.metric(
-    "S&P 500",
-    f"{sp500.get('value', 0):,.1f}",
-    f"{sp500.get('change', 0):+.2f}%",
-    delta_color="normal"
-)
-
-# NASDAQ
-nasdaq = market_data.get("NASDAQ", {})
-m2.metric(
-    "NASDAQ",
-    f"{nasdaq.get('value', 0):,.1f}",
-    f"{nasdaq.get('change', 0):+.2f}%",
-    delta_color="normal"
-)
-
-# KOSPI
-kospi = market_data.get("KOSPI", {})
-m3.metric(
-    "KOSPI",
-    f"{kospi.get('value', 0):,.1f}",
-    f"{kospi.get('change', 0):+.2f}%",
-    delta_color="normal"
-)
-
-# VIX (Volatility Index)
-vix = market_data.get("VIX", {})
-vix_value = vix.get('value', 0)
-vix_status = "Low" if vix_value < 15 else "Normal" if vix_value < 25 else "High"
-m4.metric(
-    "VIX",
-    f"{vix_value:.2f}",
-    vix_status,
-    delta_color="off"
-)
-
-# Market summary message
-avg_change = (sp500.get('change', 0) + nasdaq.get('change', 0) + kospi.get('change', 0)) / 3
-if avg_change > 1:
-    market_mood = "📈 시장 강세 - 위험자산 선호"
-elif avg_change > 0:
-    market_mood = "➡️ 시장 안정 - 완만한 상승"
-elif avg_change > -1:
-    market_mood = "↘️ 시장 약세 - 조정 국면"
-else:
-    market_mood = "📉 시장 하락 - 리스크 회피"
-
-st.caption(f"**시장 상황**: {market_mood} | 마지막 업데이트: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-
-st.divider()
 
 # --- 5. Page Router ---
-# Handle navigation from quick actions
 if 'nav_target' in st.session_state:
     target = st.session_state.nav_target
-    if target == "portfolio":
-        page = "📊 Portfolio Dashboard"
-    elif target == "stock_analysis":
-        page = "🔍 Stock Analysis"
-    elif target == "market":
-        page = "🌍 시장 정보"
+    if target == "portfolio": page = "📊 포트폴리오 관리"
+    elif target == "stock_analysis": page = "🔍 종목 심층 분석"
+    elif target == "market": page = "🌍 글로벌 시장 정보"
     del st.session_state.nav_target
 
-if page == "🏠 Home":
-    # Render Home Page
+# Top bar render (Always show unless in Market page)
+if page != "🌍 글로벌 시장 정보":
+    market_data = fetch_market_data()
+    st.session_state.market_data_cache = market_data # Cache for briefing engine
+    st.markdown("<p class='panel-header'>🌍 Global Market Pulse</p>", unsafe_allow_html=True)
+    m1, m2, m3, m4 = st.columns(4)
+
+    # S&P 500
+    sp500 = market_data.get("S&P 500", {})
+    m1.metric("S&P 500", f"{sp500.get('value', 0):,.1f}", f"{sp500.get('change', 0):+.2f}%")
+
+    # NASDAQ
+    nasdaq = market_data.get("NASDAQ", {})
+    m2.metric("NASDAQ", f"{nasdaq.get('value', 0):,.1f}", f"{nasdaq.get('change', 0):+.2f}%")
+
+    # KOSPI
+    kospi = market_data.get("KOSPI", {})
+    m3.metric("KOSPI", f"{kospi.get('value', 0):,.1f}", f"{kospi.get('change', 0):+.2f}%")
+
+    # VIX
+    vix = market_data.get("VIX", {})
+    vix_val = vix.get('value', 0)
+    st_v = "Low" if vix_val < 15 else "Normal" if vix_val < 25 else "High"
+    m4.metric("VIX", f"{vix_val:.2f}", st_v, delta_color="off")
+
+    st.divider()
+
+# --- 5. Page Router ---
+if page == "🏠 홈 대시보드":
     from pages.home import render_home_page
     render_home_page()
 
-elif page == "🌍 시장 정보":
-    # Render Market Overview Page
+elif page == "🌍 글로벌 시장 정보":
     from pages.market_overview import render_market_overview_page
     render_market_overview_page()
 
-elif page == "🔍 Stock Analysis":
+elif page == "🔍 종목 심층 분석":
     render_stock_analysis_page()
 
 else:
-    # Render Portfolio Dashboard
-    # --- 5. Main Content ---
-    # Load real data from Google Sheets and auto-calculate metrics
-    try:
-        from skills.gsheet_loader import load_data_from_gsheet
-        portfolio_df, watchlist_df, cash_df = load_data_from_gsheet("GEM_Finance_Portfolio")
-    
-        # Store raw data in session state
-        if 'raw_portfolio_df' not in st.session_state:
-            st.session_state.raw_portfolio_df = portfolio_df
-    
-        # Auto-calculate metrics on load (only once per session)
-        if 'calculated_portfolio' not in st.session_state:
-            with st.spinner("⏳ Loading portfolio and calculating metrics..."):
-                import yfinance as yf
-                from skills.finance_core_lib import calculate_portfolio_metrics
-    
-                current_prices = {}
-                ticker_col = '종목코드'
-    
-                if ticker_col in portfolio_df.columns:
-                    tickers = portfolio_df[ticker_col].dropna().unique()
-                    for ticker in tickers:
-                        try:
-                            stock = yf.Ticker(str(ticker))
-                            hist = stock.history(period='1d')
-                            if not hist.empty:
-                                price = hist['Close'].iloc[-1]
-                                current_prices[ticker] = float(price)
-                        except:
-                            pass
-    
-                # Calculate and store
-                calculated_df = calculate_portfolio_metrics(portfolio_df, current_prices, 1450)
-                st.session_state.calculated_portfolio = calculated_df
-                st.session_state.current_prices = current_prices
-    
-        # Use calculated data
-        df = st.session_state.calculated_portfolio
-    
-    except Exception as e:
-        st.error(f"Failed to load Google Sheets data: {e}")
-        profile = st.session_state.memory.user_profile
-        df = pd.DataFrame(profile.get('portfolio', []))
+    # 📊 포트폴리오 관리
+    from skills.portfolio_utils import load_portfolio_data
+    df, _ = load_portfolio_data()
     
     if not df.empty:
         col_health, col_intel, col_action = st.columns([0.25, 0.5, 0.25])
@@ -255,6 +156,7 @@ else:
                     bottom_performers = '\n'.join([f"- {row[name_col]}: {row['수익률(%)']:.1f}%" for _, row in bottom_3.iterrows()])
     
                     # Prepare detailed holdings info for AI (전체 종목)
+                    from skills.news_analyzer import get_analyst_ratings
                     holdings_detail = []
                     for _, row in result_df.iterrows():
                         name = row.get(name_col, 'N/A')
@@ -269,6 +171,10 @@ else:
                         current_price = row.get('현재가', 0)
                         category = row.get('카테고리', 'N/A')
                         account = row.get('계좌', 'N/A')
+                        
+                        # Fetch upside (Analyst consensus)
+                        ratings = get_analyst_ratings(ticker)
+                        upside = ratings.get('upside_pct', 0) if (ratings and ratings.get('status') != 'error') else 0
 
                         holdings_detail.append({
                             "name": name,
@@ -282,13 +188,14 @@ else:
                             "value_krw": float(value),
                             "profit_krw": float(profit),
                             "return_pct": float(returns),
-                            "portfolio_weight_pct": float(value_pct)
+                            "portfolio_weight_pct": float(value_pct),
+                            "upside_pct": float(upside)
                         })
 
                     holdings_text = '\n'.join([
                         f"- {h['name']} ({h['ticker']}) [{h['account']}]:\n"
-                        f"  비중 {h['portfolio_weight_pct']:.1f}%, 수익률 {h['return_pct']:.1f}%, "
-                        f"수량 {h['quantity']:.0f}주, 평가 ₩{h['value_krw']/1e6:.1f}백만"
+                        f"  수익률 {h['return_pct']:.1f}%, 비중 {h['portfolio_weight_pct']:.1f}%, **상승여력 {h['upside_pct']:.1f}%**\n"
+                        f"  평가 ₩{h['value_krw']/1e6:.1f}백만, 수량 {h['quantity']:.0f}주"
                         for h in holdings_detail
                     ])
     
@@ -302,6 +209,13 @@ else:
                         sector_dist = result_df.groupby('카테고리')['평가금액(KRW)'].sum()
                         sector_pct = (sector_dist / total_value * 100).round(1)
                         sector_summary = '\n'.join([f"- {cat}: {pct:.1f}%" for cat, pct in sector_pct.items()])
+                    
+                    # Account distribution
+                    account_summary = ""
+                    if '계좌' in result_df.columns:
+                        account_dist = result_df.groupby('계좌')['평가금액(KRW)'].sum()
+                        account_pct = (account_dist / total_value * 100).round(1)
+                        account_summary = '\n'.join([f"- {acc}: {pct:.1f}%" for acc, pct in account_pct.items()])
     
                     # Core/Satellite 자동 분류 (통합 유틸리티 사용)
                     from skills.asset_classifier import AssetClassifier
@@ -347,64 +261,30 @@ else:
                             user_profile_context = f.read()
 
                     # Create detailed user prompt with FULL data
-                    user_prompt = f"""# 포트폴리오 분석 요청
+                    user_prompt = f"""# 포트폴리오 정밀 분석 요청
 
-## 📊 포트폴리오 요약
-- 총 종목: {len(result_df)}개
+## 📊 전체 자산 현황
 - 총 투자금: ₩{total_cost/1e8:.2f}억원
 - 총 평가금액: ₩{total_value/1e8:.2f}억원
 - 총 수익률: {return_pct:.2f}%
-- **Core 비중: {core_pct:.1f}%** (목표: 50-60%)
-- **Satellite 비중: {satellite_pct:.1f}%** (목표: 40-50%)
+- Core 비중: {core_pct:.1f}% (목표 50-60%) / Satellite 비중: {satellite_pct:.1f}% (목표 40-50%)
 
-## 🏦 계좌별 & 종목별 상세 내역
+## 🏦 계좌별 비중
+{account_summary}
 
+## 🔍 종목별 상세 현황 (수익률, 비중, 애널리스트 상승여력 포함)
 {holdings_text}
 
-## 📈 섹터 분산
-{sector_summary}
+## 📋 전략적 액션 제안 (반드시 포함할 내용)
 
-## ⚠️ 리스크 지표
-- 최대 종목 비중: {risk_metrics.get('max_position_pct', 0):.1f}%
-- 상위 3종목 집중도: {risk_metrics.get('concentration_risk', 0):.1f}%
-- 포트폴리오 변동성: {risk_metrics.get('volatility', 0):.2f}%
+1. **계좌별 전략**: 각 계좌(ISA, 연금, 일반 등)의 목적에 맞는 포지션 조정안
+2. **Bottom-Up 종목 액션**: 
+   - **추가 매수(Buy more)**: 상승여력은 높은데 비중이 적거나 단가가 매력적인 종목
+   - **수익 실현(Sell/Rebalance)**: 수익률은 높으나 상승여력이 소진된 종목, 혹은 비중이 너무 커진 종목
+   - **보유 지속(Hold)**: 추세가 견고하고 상승여력이 충분한 종목
+3. **구체적 수치**: "X주 매도 후 Y종목으로 이동" 또는 "₩XXX만원 추가 투입" 등 실행 가능한 가이드
 
-## 🚀 신규 성장 섹터 고려사항
-다음 섹터들이 포트폴리오에 반영되어 있는지 확인:
-1. **AI/반도체** (20-25%): 데이터센터, AI 칩셋 - NVDA, AMD, TSM
-2. **바이오/헬스케어** (5-10%): 유전자 편집, 면역치료 - CRSP, EDIT, VRTX
-3. **로봇/자동화** (5-10%): 산업용 로봇, AI 로보틱스 - BOTZ, TSLA, ABB
-4. **전력/에너지** (5-10%): 신재생 에너지, 태양광, 풍력 - ENPH, FSLR, NEE
-5. **한국 성장주** (5-10%): 반도체, 2차전지 - 삼성전자, SK하이닉스
-
-위 섹터 중 누락되거나 과소평가된 부분이 있다면, **구체적 추천 종목과 매수 타이밍**을 제시하세요.
-
-## 📋 분석 요청
-위 **실제 데이터**를 바탕으로 다음을 제공하세요:
-
-1. **Core-Satellite 균형 평가**:
-   - 현재 Core {core_pct:.1f}%, Satellite {satellite_pct:.1f}%가 목표 범위(50-60% / 40-50%)에 있는지
-   - 리밸런싱 필요 여부
-
-2. **Bottom-Up 실행 액션** (최대 3개):
-   - **계좌명 필수**: "ISA 계좌" / "연금저축" / "IRP" 등
-   - **정확한 티커와 종목명**: 예) "NVDA (엔비디아)"
-   - **구체적 금액과 수량**: 예) "₩855만원 (약 50주)" 또는 "보유량의 50%"
-   - **Core/Satellite 분류**: 각 종목의 자산 분류 명시
-   - **근거**: 단순 "비중 초과"가 아닌, **펀더멘털/성장성/추세** 기반 판단
-   - **중요**: 좋은 Satellite 종목(AI 성장 스토리, 강한 추세)은 비중이 높아도 보유 유지 가능
-
-3. **리밸런싱 제안**:
-   - Satellite 익절 → Core 이동 시나리오 (구체적 금액)
-   - 또는 Core 추가 매수 방안
-
-**중요 원칙**:
-- 비중 초과는 경고일 뿐, 매도 근거가 아님
-- Satellite는 초과 수익 알파를 내야 하므로, 성장성 좋은 종목은 집중 투자 유지
-- 섹터 집중도 40%까지 허용 (특히 AI/반도체)
-- 단순 규칙이 아닌 데이터 기반 판단 필수
-
-500자 이내, 실행 가능한 내용만."""
+마스터를 위해 매우 정교하고 실행 가능한 분석을 한국어로 제공하세요."""
 
                     full_prompt = f"{system_prompt}\n\n# 사용자 투자 전략\n{user_profile_context}\n\n---\n\n{user_prompt}"
     

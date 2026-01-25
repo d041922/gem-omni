@@ -13,39 +13,7 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime
 from typing import Dict, Any
-
-
-@st.cache_data(ttl=300)  # 5분 캐싱
-def fetch_market_data() -> Dict[str, Dict[str, float]]:
-    """Fetch real-time market data from yfinance"""
-    indices = {
-        "S&P 500": "^GSPC",
-        "NASDAQ": "^IXIC",
-        "KOSPI": "^KS11",
-        "VIX": "^VIX"
-    }
-
-    market_data = {}
-    for name, ticker in indices.items():
-        try:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period='2d')
-
-            if len(hist) >= 2:
-                current = hist['Close'].iloc[-1]
-                previous = hist['Close'].iloc[-2]
-                change_pct = ((current - previous) / previous) * 100
-
-                market_data[name] = {
-                    'value': current,
-                    'change': change_pct
-                }
-            else:
-                market_data[name] = {'value': 0, 'change': 0}
-        except:
-            market_data[name] = {'value': 0, 'change': 0}
-
-    return market_data
+from skills.finance_tools import fetch_market_data
 
 
 @st.cache_data(ttl=300)

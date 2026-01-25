@@ -31,16 +31,6 @@
       "momentum_score": 6.0
     },
     {
-      "ticker": "MSFT",
-      "name": "Microsoft Corporation",
-      "price": 465.95001220703125,
-      "change_pct": 3.282794050120964,
-      "rsi": 45.66646737855407,
-      "volume_surge": 1.528917401781177,
-      "position_52w": 23.9198988227892,
-      "momentum_score": 5.0
-    },
-    {
       "ticker": "TMO",
       "name": "Thermo Fisher Scientific Inc.",
       "price": 625.97998046875,
@@ -48,6 +38,16 @@
       "rsi": 63.46663130390366,
       "volume_surge": 1.5596895911381539,
       "position_52w": 80.59359272837787,
+      "momentum_score": 5.0
+    },
+    {
+      "ticker": "MSFT",
+      "name": "Microsoft Corporation",
+      "price": 465.95001220703125,
+      "change_pct": 3.282794050120964,
+      "rsi": 45.66646737855407,
+      "volume_surge": 1.528917401781177,
+      "position_52w": 23.9198988227892,
       "momentum_score": 5.0
     },
     {
@@ -71,5 +71,5 @@
       "momentum_score": 4.0
     }
   ],
-  "timestamp": "2026-01-25T17:48:07.346133"
+  "timestamp": "2026-01-25T19:08:26.572448"
 }
