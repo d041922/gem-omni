@@ -2,7 +2,7 @@
 Stock Analysis Crew
 Multi-agent collaboration system for comprehensive stock analysis
 """
-from crewai import Crew, Task
+from crewai import Crew, Task, LLM, Process
 from agents.crewai_agents.stock_agents import (
     create_fundamental_analyst,
     create_sentiment_analyst,
@@ -12,6 +12,13 @@ from agents.crewai_agents.stock_agents import (
 )
 from typing import Dict, Any
 import json
+import os
+
+# Configure Gemini LLM
+gemini_llm = LLM(
+    model="gemini/gemini-2.0-flash-exp",
+    api_key=os.getenv("GOOGLE_API_KEY")
+)
 
 
 def create_stock_analysis_crew() -> Crew:
@@ -32,7 +39,7 @@ def create_stock_analysis_crew() -> Crew:
     risk_control = create_risk_control_agent()
     moderator = create_moderator()
 
-    # Create crew
+    # Create crew with sequential process
     crew = Crew(
         agents=[
             fundamental_analyst,
@@ -41,6 +48,7 @@ def create_stock_analysis_crew() -> Crew:
             risk_control,
             moderator
         ],
+        process=Process.sequential,
         verbose=True
     )
 
