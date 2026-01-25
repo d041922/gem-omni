@@ -115,39 +115,13 @@ def run_stock_analysis(
 {user_profile_context}
 """
 
-    # Add portfolio context for Risk Control Agent
-    portfolio_context = ""
-    if portfolio_data:
-        holdings = portfolio_data.get('holdings', [])
-        total_value = portfolio_data.get('total_value', 0)
-
-        # Calculate sector concentration
-        sector_dist = {}
-        for holding in holdings:
-            sector = holding.get('sector', 'Unknown')
-            value_pct = holding.get('value_pct', 0)
-            sector_dist[sector] = sector_dist.get(sector, 0) + value_pct
-
-        # Check if ticker already exists in portfolio
-        existing_position = None
-        for holding in holdings:
-            if holding.get('ticker') == ticker:
-                existing_position = holding
-                break
-
-        portfolio_context = f"""
-
-## 📊 현재 포트폴리오 정보
-- 총 보유 종목: {len(holdings)}개
-- 총 평가금액: ${total_value:,.0f}
-- {ticker} 기존 보유: {'있음 ('+str(existing_position.get('value_pct', 0))+'%)' if existing_position else '없음'}
-
-### 섹터 분산 현황
-{chr(10).join([f"- {sector}: {pct:.1f}%" for sector, pct in sorted(sector_dist.items(), key=lambda x: -x[1])])}
-
-### Top 5 보유 종목
-{chr(10).join([f"- {h.get('name', h.get('ticker'))}: {h.get('value_pct', 0):.1f}%" for h in sorted(holdings, key=lambda x: -x.get('value_pct', 0))[:5]])}
-"""
+    # Add portfolio context for Risk Control Agent (unified utility)
+    try:
+        from skills.portfolio_utils import get_portfolio_context_for_ai
+        portfolio_context = get_portfolio_context_for_ai(ticker)
+    except Exception as e:
+        print(f"Warning: Could not load portfolio context: {e}")
+        portfolio_context = "\n## 📊 현재 포트폴리오 정보\n- 포트폴리오 데이터 로드 실패\n"
 
     shared_context += portfolio_context
 

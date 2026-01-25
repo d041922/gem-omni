@@ -17,44 +17,9 @@ def cached_analyze_stock(ticker: str, period: str):
     return analyze_stock(ticker, period)
 
 
-def check_portfolio_holding(ticker: str) -> Optional[Dict[str, Any]]:
-    """
-    Check if ticker is in user's portfolio
-
-    Returns:
-        Dict with holding info or None if not found
-    """
-    try:
-        # Load portfolio from session state
-        if 'calculated_portfolio' in st.session_state:
-            portfolio_df = st.session_state.calculated_portfolio
-
-            # Try to match ticker
-            ticker_col = '종목코드' if '종목코드' in portfolio_df.columns else '티커코드'
-
-            if ticker_col in portfolio_df.columns:
-                # Normalize ticker for comparison
-                portfolio_df['normalized_ticker'] = portfolio_df[ticker_col].astype(str).str.upper().str.strip()
-                ticker_normalized = ticker.upper().strip()
-
-                match = portfolio_df[portfolio_df['normalized_ticker'] == ticker_normalized]
-
-                if not match.empty:
-                    row = match.iloc[0]
-                    return {
-                        'name': row.get('종목명', row.get('name', ticker)),
-                        'quantity': float(row.get('수량', 0)),
-                        'avg_price_usd': float(row.get('평균 단가(USD)', 0)),
-                        'avg_price_krw': float(row.get('평균 단가(KRW)', 0)),
-                        'current_value': float(row.get('평가금액(KRW)', 0)),
-                        'profit_loss': float(row.get('손익(KRW)', 0)),
-                        'return_pct': float(row.get('수익률(%)', 0))
-                    }
-
-        return None
-    except Exception as e:
-        print(f"Error checking portfolio: {e}")
-        return None
+# Removed: check_portfolio_holding() moved to skills/portfolio_utils.py
+# Import from unified utility instead
+from skills.portfolio_utils import check_portfolio_holding
 
 
 def render_stock_analysis_page():
@@ -220,6 +185,25 @@ def render_stock_analysis_page():
     # Fundamentals
     st.markdown("### 💼 기업 펀더멘털")
     render_fundamentals(summary)
+
+    st.divider()
+
+    # === NEW: 깊이 분석 섹션 ===
+    # Earnings Trend Analysis
+    st.markdown("### 📊 실적 추세 분석")
+    render_earnings_analysis(ticker)
+
+    st.divider()
+
+    # Peer Comparison
+    st.markdown("### 🏆 경쟁사 비교")
+    render_peer_comparison(ticker)
+
+    st.divider()
+
+    # Valuation Analysis
+    st.markdown("### 💰 밸류에이션 분석")
+    render_valuation_analysis(ticker)
 
     st.divider()
 
@@ -459,3 +443,325 @@ def render_fundamentals(summary: dict):
             st.metric("베타", f"{beta:.2f}", beta_status)
         else:
             st.metric("베타", "N/A")
+
+
+def render_earnings_analysis(ticker: str):
+    """Render earnings trend analysis"""
+    try:
+        from skills.earnings_analyzer import analyze_earnings_trend
+
+        with st.spinner("실적 추세 분석 중..."):
+            result = analyze_earnings_trend(ticker)
+
+        if 'error' in result:
+            st.warning(f"실적 데이터를 불러올 수 없습니다: {result['error']}")
+            return
+
+        # Revenue Trend
+        col1, col2 = st.columns([1, 1])
+
+        with col1:
+            st.markdown("**📈 매출 추세**")
+            rev = result.get('revenue_trend', {})
+
+            if 'qoq_growth' in rev and rev['qoq_growth']:
+                # QoQ Growth chart
+                qoq = rev['qoq_growth']
+                quarters = [f"Q{i+1}" for i in range(len(qoq))]
+
+                fig = go.Figure()
+                fig.add_trace(go.Bar(
+                    x=quarters,
+                    y=qoq,
+                    marker_color=['#4ECDC4' if v > 0 else '#FF6B6B' for v in qoq],
+                    text=[f"{v:+.1f}%" for v in qoq],
+                    textposition='outside'
+                ))
+                fig.update_layout(
+                    height=200,
+                    margin=dict(t=20, b=20, l=20, r=20),
+                    template='plotly_dark',
+                    showlegend=False,
+                    yaxis_title="QoQ 성장률 (%)"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Direction indicator
+                direction = rev.get('direction', 'unknown')
+                if direction == 'accelerating':
+                    st.success(f"✅ {rev.get('summary', '성장 가속')}")
+                elif direction == 'decelerating':
+                    st.warning(f"⚠️ {rev.get('summary', '성장 둔화')}")
+                else:
+                    st.info(f"➡️ {rev.get('summary', '안정적 성장')}")
+
+        with col2:
+            st.markdown("**💰 마진율 추세**")
+            margin = result.get('margin_analysis', {})
+
+            if 'gross_margin' in margin and margin['gross_margin']:
+                gross = margin['gross_margin']
+                net = margin.get('net_margin', [])
+
+                quarters = [f"Q{i+1}" for i in range(len(gross))]
+
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=quarters, y=gross,
+                    name='Gross Margin',
+                    line=dict(color='#4ECDC4', width=3),
+                    mode='lines+markers'
+                ))
+
+                if net:
+                    fig.add_trace(go.Scatter(
+                        x=quarters, y=net,
+                        name='Net Margin',
+                        line=dict(color='#FF6B6B', width=3),
+                        mode='lines+markers'
+                    ))
+
+                fig.update_layout(
+                    height=200,
+                    margin=dict(t=20, b=20, l=20, r=20),
+                    template='plotly_dark',
+                    yaxis_title="마진율 (%)",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02)
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+                trend = margin.get('trend', 'stable')
+                if trend == 'improving':
+                    st.success(f"✅ {margin.get('summary', '마진율 개선')}")
+                elif trend == 'declining':
+                    st.warning(f"⚠️ {margin.get('summary', '마진율 하락')}")
+                else:
+                    st.info(f"➡️ {margin.get('summary', '마진율 안정')}")
+
+        # Quality Score
+        st.divider()
+        col_score, col_surprise = st.columns([1, 1])
+
+        with col_score:
+            quality_score = result.get('quality_score', 0)
+            recommendation = result.get('recommendation', 'unknown')
+
+            st.metric("실적 품질 스코어", f"{quality_score}/10")
+
+            if recommendation == 'strong_growth':
+                st.success("🚀 강력한 성장")
+            elif recommendation == 'moderate_growth':
+                st.info("📈 안정적 성장")
+            elif recommendation == 'slowing':
+                st.warning("📉 성장 둔화")
+            else:
+                st.error("🔴 실적 악화")
+
+        with col_surprise:
+            surprise = result.get('surprise_analysis', {})
+            beat_rate = surprise.get('beat_rate')
+
+            if beat_rate is not None:
+                st.metric(
+                    "가이던스 상회 비율",
+                    f"{beat_rate*100:.0f}%",
+                    f"Avg +{surprise.get('avg_surprise', 0):.1f}%"
+                )
+
+                consistency = surprise.get('consistency', 'unknown')
+                if consistency == 'high':
+                    st.success("🎯 높은 예측 가능성")
+                elif consistency == 'moderate':
+                    st.info("➡️ 보통 예측 가능성")
+                else:
+                    st.warning("⚠️ 낮은 예측 가능성")
+
+    except Exception as e:
+        st.error(f"실적 분석 오류: {str(e)}")
+
+
+def render_peer_comparison(ticker: str):
+    """Render peer comparison with yfinance fallback"""
+    try:
+        from skills.peer_comparison import compare_within_sector
+
+        with st.spinner("경쟁사 비교 중..."):
+            result = compare_within_sector(ticker)
+
+        if 'error' in result:
+            # Fallback: Show basic info from yfinance
+            st.warning("⚠️ 상세 경쟁사 데이터 없음 (주요 종목만 지원)")
+
+            try:
+                import yfinance as yf
+                stock = yf.Ticker(ticker)
+                info = stock.info
+
+                st.markdown("**📊 기본 정보 (yfinance)**")
+                col1, col2, col3, col4 = st.columns(4)
+
+                sector = info.get('sector', 'N/A')
+                industry = info.get('industry', 'N/A')
+                pe = info.get('trailingPE', 0)
+                peg = info.get('pegRatio', 0)
+
+                col1.metric("섹터", sector)
+                col2.metric("산업", industry[:15] + "..." if len(industry) > 15 else industry)
+                col3.metric("PER", f"{pe:.1f}" if pe and pe > 0 else "N/A")
+                col4.metric("PEG", f"{peg:.2f}" if peg and peg > 0 else "N/A")
+
+                st.caption("💡 상세 경쟁사 비교는 NVDA, AAPL, TSLA 등 주요 종목에서 지원됩니다.")
+                st.caption(f"🔍 오류 상세: {result.get('error', 'Unknown error')}")
+
+            except Exception as fallback_error:
+                st.error(f"기본 정보도 불러올 수 없습니다: {fallback_error}")
+
+            return
+
+        # Comparison Table
+        peer_table = result.get('peer_table')
+
+        if peer_table is not None and not peer_table.empty:
+            # Display columns
+            display_cols = ['ticker', 'revenue_growth_yoy', 'gross_margin', 'net_margin', 'pe_ratio', 'peg_ratio']
+            available_cols = [col for col in display_cols if col in peer_table.columns]
+
+            if available_cols:
+                display_df = peer_table[available_cols].copy()
+
+                # Rename columns
+                display_df.columns = ['티커', '매출 성장률', 'Gross Margin', 'Net Margin', 'PER', 'PEG']
+
+                # Highlight main ticker
+                def highlight_main(row):
+                    if row['티커'] == ticker:
+                        return ['background-color: #1e3a5f'] * len(row)
+                    return [''] * len(row)
+
+                styled_df = display_df.style.apply(highlight_main, axis=1)
+                st.dataframe(styled_df, use_container_width=True)
+
+        # Summary
+        summary = result.get('comparison_summary', {})
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            growth_rank = summary.get('growth_rank')
+            total = summary.get('total_peers', 0)
+            if growth_rank:
+                st.metric("성장률 순위", f"{growth_rank}/{total}")
+
+        with col2:
+            margin_rank = summary.get('margin_rank')
+            if margin_rank:
+                st.metric("마진율 순위", f"{margin_rank}/{total}")
+
+        with col3:
+            market_share = summary.get('market_share_pct')
+            if market_share:
+                st.metric("시장 점유율", f"{market_share:.1f}%")
+
+        # Competitive Advantage
+        advantage = summary.get('competitive_advantage', 'unknown')
+        summary_text = summary.get('summary', '')
+
+        if advantage == 'dominant':
+            st.success(f"🏆 {summary_text}")
+        elif advantage == 'strong':
+            st.info(f"💪 {summary_text}")
+        elif advantage == 'moderate':
+            st.warning(f"➡️ {summary_text}")
+        else:
+            st.error(f"⚠️ {summary_text}")
+
+    except Exception as e:
+        st.error(f"경쟁사 비교 오류: {str(e)}")
+
+
+def render_valuation_analysis(ticker: str):
+    """Render valuation analysis"""
+    try:
+        from skills.valuation_engine import calculate_valuation_metrics
+
+        with st.spinner("밸류에이션 분석 중..."):
+            result = calculate_valuation_metrics(ticker)
+
+        if 'error' in result:
+            st.warning(f"밸류에이션 데이터를 불러올 수 없습니다")
+            return
+
+        # Multiples
+        col1, col2, col3, col4 = st.columns(4)
+        multiples = result.get('multiples', {})
+
+        with col1:
+            pe = multiples.get('pe_ratio')
+            st.metric("PER", f"{pe:.1f}" if pe else "N/A")
+
+        with col2:
+            peg = multiples.get('peg_ratio')
+            if peg:
+                peg_status = "저평가" if peg < 1.0 else "적정" if peg < 1.5 else "고평가"
+                st.metric("PEG", f"{peg:.2f}", peg_status)
+            else:
+                st.metric("PEG", "N/A")
+
+        with col3:
+            ps = multiples.get('price_to_sales')
+            st.metric("P/S", f"{ps:.1f}" if ps else "N/A")
+
+        with col4:
+            pb = multiples.get('price_to_book')
+            st.metric("P/B", f"{pb:.1f}" if pb else "N/A")
+
+        st.divider()
+
+        # Profitability & Valuation Score
+        col_profit, col_score = st.columns([1, 1])
+
+        with col_profit:
+            st.markdown("**💼 수익성**")
+            profit = result.get('profitability', {})
+
+            roe = profit.get('roe')
+            roa = profit.get('roa')
+            net_margin = profit.get('net_margin')
+
+            if roe:
+                st.caption(f"ROE: {roe:.1f}%")
+            if roa:
+                st.caption(f"ROA: {roa:.1f}%")
+            if net_margin:
+                st.caption(f"Net Margin: {net_margin:.1f}%")
+
+        with col_score:
+            valuation_score = result.get('valuation_score', 0)
+            assessment = result.get('assessment', 'unknown')
+
+            st.metric("밸류에이션 스코어", f"{valuation_score}/10")
+
+            if assessment == 'undervalued':
+                st.success("💎 저평가")
+            elif assessment == 'fair_value':
+                st.info("✅ 적정 가격")
+            else:
+                st.warning("⚠️ 고평가")
+
+        # Summary
+        st.divider()
+        summary_text = result.get('summary', '')
+        st.markdown(f"**💡 종합 평가**: {summary_text}")
+
+        # Sector Comparison
+        sector_comp = result.get('sector_comparison', {})
+        if sector_comp.get('premium_pct'):
+            premium = sector_comp['premium_pct']
+            justified = sector_comp.get('premium_justified', False)
+
+            if justified:
+                st.info(f"📊 섹터 대비 Premium {premium:+.1f}% (정당화 가능)")
+            else:
+                st.warning(f"📊 섹터 대비 Premium {premium:+.1f}% (과도)")
+
+    except Exception as e:
+        st.error(f"밸류에이션 분석 오류: {str(e)}")

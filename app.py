@@ -46,8 +46,8 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    options=["📊 Portfolio Dashboard", "🔍 Stock Analysis"],
-    index=0
+    options=["🌍 시장 정보", "📊 Portfolio Dashboard", "🔍 Stock Analysis"],
+    index=1  # Default to Portfolio Dashboard
 )
 
 st.sidebar.markdown("---")
@@ -148,11 +148,16 @@ st.caption(f"**시장 상황**: {market_mood} | 마지막 업데이트: {datetim
 st.divider()
 
 # --- 5. Page Router ---
-if page == "🔍 Stock Analysis":
+if page == "🌍 시장 정보":
+    # Render Market Overview Page
+    from pages.market_overview import render_market_overview_page
+    render_market_overview_page()
+
+elif page == "🔍 Stock Analysis":
     render_stock_analysis_page()
 
 else:
-    # Render Portfolio Dashboard (Default)
+    # Render Portfolio Dashboard
     # --- 5. Main Content ---
     # Load real data from Google Sheets and auto-calculate metrics
     try:
@@ -282,34 +287,28 @@ else:
                         sector_pct = (sector_dist / total_value * 100).round(1)
                         sector_summary = '\n'.join([f"- {cat}: {pct:.1f}%" for cat, pct in sector_pct.items()])
     
-                    # Core/Satellite 자동 분류
+                    # Core/Satellite 자동 분류 (통합 유틸리티 사용)
+                    from skills.asset_classifier import AssetClassifier
                     import json
-                    core_keywords = ['SPY', 'VOO', 'QQQ', 'VTI', 'SCHD', 'VYM', 'MSFT', 'AAPL', 'JNJ', 'PG', 'KO']
-                    satellite_keywords = ['NVDA', 'AMD', 'TSM', 'TSMC', 'SMCI', 'PLTR', 'CRSP', 'EDIT', 'BEAM',
-                                         '005930', '000660', 'ARKK', 'SMH', 'SOXX']
+
+                    # USER_PROFILE의 전략 로드 (현재: balanced)
+                    classifier = AssetClassifier(strategy='balanced')
 
                     core_value = 0
                     satellite_value = 0
 
                     for h in holdings_detail:
-                        ticker = h['ticker']
-                        value = h['value_krw']
+                        asset_type = classifier.classify(
+                            h['ticker'],
+                            h.get('category', ''),
+                            h['name']
+                        )
+                        h['asset_type'] = asset_type
 
-                        if any(kw in ticker for kw in core_keywords):
-                            h['asset_type'] = 'Core'
-                            core_value += value
-                        elif any(kw in ticker for kw in satellite_keywords):
-                            h['asset_type'] = 'Satellite'
-                            satellite_value += value
+                        if asset_type == 'Core':
+                            core_value += h['value_krw']
                         else:
-                            # Default: 카테고리 기반 판단
-                            cat = h.get('category', '').lower()
-                            if 'etf' in cat or 'index' in cat or '배당' in cat:
-                                h['asset_type'] = 'Core'
-                                core_value += value
-                            else:
-                                h['asset_type'] = 'Satellite'
-                                satellite_value += value
+                            satellite_value += h['value_krw']
 
                     core_pct = (core_value / total_value * 100) if total_value > 0 else 0
                     satellite_pct = (satellite_value / total_value * 100) if total_value > 0 else 0
@@ -353,6 +352,16 @@ else:
 - 최대 종목 비중: {risk_metrics.get('max_position_pct', 0):.1f}%
 - 상위 3종목 집중도: {risk_metrics.get('concentration_risk', 0):.1f}%
 - 포트폴리오 변동성: {risk_metrics.get('volatility', 0):.2f}%
+
+## 🚀 신규 성장 섹터 고려사항
+다음 섹터들이 포트폴리오에 반영되어 있는지 확인:
+1. **AI/반도체** (20-25%): 데이터센터, AI 칩셋 - NVDA, AMD, TSM
+2. **바이오/헬스케어** (5-10%): 유전자 편집, 면역치료 - CRSP, EDIT, VRTX
+3. **로봇/자동화** (5-10%): 산업용 로봇, AI 로보틱스 - BOTZ, TSLA, ABB
+4. **전력/에너지** (5-10%): 신재생 에너지, 태양광, 풍력 - ENPH, FSLR, NEE
+5. **한국 성장주** (5-10%): 반도체, 2차전지 - 삼성전자, SK하이닉스
+
+위 섹터 중 누락되거나 과소평가된 부분이 있다면, **구체적 추천 종목과 매수 타이밍**을 제시하세요.
 
 ## 📋 분석 요청
 위 **실제 데이터**를 바탕으로 다음을 제공하세요:
@@ -444,32 +453,21 @@ else:
             if 'calculated_portfolio' in st.session_state:
                 result_df = st.session_state.calculated_portfolio
 
-                # Calculate Core/Satellite classification
-                core_keywords = ['SPY', 'VOO', 'QQQ', 'VTI', 'SCHD', 'VYM', 'MSFT', 'AAPL', 'JNJ', 'PG', 'KO']
-                satellite_keywords = ['NVDA', 'AMD', 'TSM', 'TSMC', 'SMCI', 'PLTR', 'CRSP', 'EDIT', 'BEAM',
-                                     '005930', '000660', 'ARKK', 'SMH', 'SOXX']
+                # Calculate Core/Satellite classification (통합 유틸리티 사용)
+                from skills.asset_classifier import AssetClassifier
 
-                def classify_asset(ticker, category):
-                    if any(kw in str(ticker) for kw in core_keywords):
-                        return 'Core'
-                    elif any(kw in str(ticker) for kw in satellite_keywords):
-                        return 'Satellite'
-                    else:
-                        cat = str(category).lower()
-                        if 'etf' in cat or 'index' in cat or '배당' in cat:
-                            return 'Core'
-                        else:
-                            return 'Satellite'
+                classifier_chart = AssetClassifier(strategy='balanced')
 
                 result_df['asset_type'] = result_df.apply(
-                    lambda row: classify_asset(
+                    lambda row: classifier_chart.classify(
                         row.get('티커코드', row.get('종목코드', '')),
-                        row.get('카테고리', '')
+                        row.get('카테고리', ''),
+                        row.get('종목명', '')
                     ), axis=1
                 )
 
                 # Create tabs for different charts
-                chart_tabs = st.tabs(["📊 Core-Satellite", "🎯 수익률", "🏦 계좌별", "📈 섹터별"])
+                chart_tabs = st.tabs(["📊 Core-Satellite", "🏦 계좌별", "📈 섹터별"])
 
                 # Tab 1: Core vs Satellite
                 with chart_tabs[0]:
@@ -506,42 +504,8 @@ else:
                                   "✅ OK" if 40 <= sat_pct <= 50 else "⚠️ 조정 필요")
                     st.caption("목표: Core 50-60%, Satellite 40-50%")
 
-                # Tab 2: Top/Bottom performers
+                # Tab 2: By account
                 with chart_tabs[1]:
-                    if '종목명' in result_df.columns:
-                        top_5 = result_df.nlargest(5, '수익률(%)')
-                        bottom_5 = result_df.nsmallest(5, '수익률(%)')
-
-                        fig_perf = go.Figure()
-                        fig_perf.add_trace(go.Bar(
-                            x=top_5['종목명'],
-                            y=top_5['수익률(%)'],
-                            name='Top 5',
-                            marker_color='#4ECDC4',
-                            text=top_5['수익률(%)'].apply(lambda x: f'{x:.1f}%'),
-                            textposition='outside'
-                        ))
-                        fig_perf.add_trace(go.Bar(
-                            x=bottom_5['종목명'],
-                            y=bottom_5['수익률(%)'],
-                            name='Bottom 5',
-                            marker_color='#FF6B6B',
-                            text=bottom_5['수익률(%)'].apply(lambda x: f'{x:.1f}%'),
-                            textposition='outside'
-                        ))
-                        fig_perf.update_layout(
-                            title="수익률 상위/하위 종목",
-                            yaxis_title="수익률 (%)",
-                            height=280,
-                            template="plotly_dark",
-                            margin=dict(t=40,b=20,l=0,r=0),
-                            showlegend=True,
-                            barmode='group'
-                        )
-                        st.plotly_chart(fig_perf, use_container_width=True)
-
-                # Tab 3: By account
-                with chart_tabs[2]:
                     if '계좌' in result_df.columns:
                         account_data = result_df.groupby('계좌')['평가금액(KRW)'].sum().reset_index()
                         account_data = account_data.sort_values('평가금액(KRW)', ascending=False)
@@ -565,8 +529,8 @@ else:
                     else:
                         st.info("계좌 정보가 없습니다")
 
-                # Tab 4: By sector
-                with chart_tabs[3]:
+                # Tab 3: By sector
+                with chart_tabs[2]:
                     if '카테고리' in result_df.columns:
                         sector_data = result_df.groupby('카테고리')['평가금액(KRW)'].sum().reset_index()
                         sector_data = sector_data.sort_values('평가금액(KRW)', ascending=True)
