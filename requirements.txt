@@ -1,5 +1,6 @@
 # Core Streamlit & Data
 streamlit>=1.50.0
+streamlit-aggrid>=1.0.0
 pandas>=2.0.0
 numpy>=1.24.0
 plotly>=5.18.0
@@ -7,10 +8,11 @@ plotly>=5.18.0
 # Financial Data
 yfinance>=0.2.0
 
-# Google Sheets Integration
+# Google Integration
 gspread>=6.0.0
 google-auth>=2.20.0
 google-auth-oauthlib>=1.0.0
+google-generativeai>=0.8.0
 
 # AI & CrewAI
 crewai>=1.8.0
@@ -23,3 +25,4 @@ python-dotenv>=1.0.0
 # Utilities
 requests>=2.31.0
 python-dateutil>=2.8.0
+pydantic>=2.0.0
