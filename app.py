@@ -24,19 +24,29 @@ def check_password():
 
     # Show login form
     st.markdown("""
-        <div style='display: flex; justify-content: center; align-items: center; height: 300px; flex-direction: column;'>
+        <div style='display: flex; justify-content: center; align-items: center; padding-top: 50px; flex-direction: column;'>
             <h1 style='color: #58A6FF;'>💎 GEM: OMNI</h1>
             <p style='color: #8B949E;'>Master, please verify your identity.</p>
         </div>
     """, unsafe_allow_html=True)
     
-    password = st.text_input("Password", type="password", key="login_pwd")
-    if st.button("Login"):
-        if password == st.secrets.get("APP_PASSWORD", "admin1234"): # Default for safety
-            st.session_state.authenticated = True
-            st.rerun()
-        else:
-            st.error("Invalid password. Access denied.")
+    with st.form("login_form"):
+        password = st.text_input("Password", type="password")
+        submit = st.form_submit_button("Login")
+        
+        if submit:
+            target_password = st.secrets.get("APP_PASSWORD")
+            # secrets에 없을 경우를 대비한 디버깅 (값은 노출 안 함)
+            if target_password is None:
+                st.warning("Warning: APP_PASSWORD not found in secrets. Contact admin.")
+                target_password = "admin1234" # Fallback
+            
+            if password == str(target_password):
+                st.session_state.authenticated = True
+                st.success("Identity verified. Loading system...")
+                st.rerun()
+            else:
+                st.error("Invalid password. Access denied.")
     
     return False
 
