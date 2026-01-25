@@ -8,6 +8,7 @@ from plotly.subplots import make_subplots
 import pandas as pd
 from typing import Optional, Dict, Any
 from skills.stock_analyzer import analyze_stock, generate_ai_analysis
+from agents.crews.stock_analysis_crew import run_stock_analysis
 
 
 @st.cache_data(ttl=1800)  # 30분 캐싱 - 같은 종목 재분석 시 토큰 절약
@@ -225,18 +226,57 @@ def render_stock_analysis_page():
     # AI Analysis
     st.markdown("### 🧠 AI 투자 분석")
 
+    # Analysis mode selection
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        analysis_mode = st.radio(
+            "분석 방식 선택",
+            ["단일 AI 분석 (빠름, 5초)", "멀티에이전트 분석 (심층, 30초)"],
+            help="단일 AI: 빠른 분석 (1개 AI)\n멀티에이전트: 3명의 전문가 토론 + 합의"
+        )
+
     # Check if AI analysis already exists
-    if 'ai_stock_analysis' in st.session_state:
+    if 'ai_stock_analysis' in st.session_state and 'ai_analysis_mode' in st.session_state:
         st.markdown(st.session_state.ai_stock_analysis)
-        if st.button("🔄 AI 분석 새로고침", use_container_width=True):
-            del st.session_state.ai_stock_analysis
-            st.rerun()
+
+        col_refresh, col_switch = st.columns([1, 1])
+        with col_refresh:
+            if st.button("🔄 AI 분석 새로고침", use_container_width=True):
+                del st.session_state.ai_stock_analysis
+                del st.session_state.ai_analysis_mode
+                st.rerun()
+        with col_switch:
+            current_mode = st.session_state.ai_analysis_mode
+            other_mode = "멀티에이전트" if "단일" in current_mode else "단일 AI"
+            if st.button(f"🔄 {other_mode}로 재분석", use_container_width=True):
+                del st.session_state.ai_stock_analysis
+                del st.session_state.ai_analysis_mode
+                st.rerun()
     else:
         if st.button("🤖 AI 투자 의견 생성", use_container_width=True, type="primary"):
-            with st.spinner("⏳ AI 분석 중... (약 5초 소요)"):
-                ai_analysis = generate_ai_analysis(analysis_result)
-                st.session_state.ai_stock_analysis = ai_analysis
-                st.rerun()
+            # Single AI Analysis
+            if "단일" in analysis_mode:
+                with st.spinner("⏳ AI 분석 중... (약 5초 소요)"):
+                    ai_analysis = generate_ai_analysis(analysis_result)
+                    st.session_state.ai_stock_analysis = ai_analysis
+                    st.session_state.ai_analysis_mode = analysis_mode
+                    st.rerun()
+
+            # Multi-Agent Analysis
+            else:
+                with st.spinner("⏳ 멀티에이전트 분석 중...\n\n3명의 전문가가 토론하고 있습니다... (약 30초 소요)"):
+                    try:
+                        ai_analysis = run_stock_analysis(
+                            ticker=analysis_result['ticker'],
+                            analysis_data=analysis_result['summary'],
+                            data_file_path=analysis_result['data_file']
+                        )
+                        st.session_state.ai_stock_analysis = ai_analysis
+                        st.session_state.ai_analysis_mode = analysis_mode
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"멀티에이전트 분석 실패: {str(e)}")
+                        st.info("단일 AI 분석을 시도하세요.")
 
 
 def render_price_chart(df: pd.DataFrame, ticker: str):

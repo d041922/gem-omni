@@ -16,6 +16,7 @@ from skills.technical_indicators import (
     calculate_mfi,
     calculate_parabolic_sar
 )
+from skills.sentiment_analyzer import get_news_sentiment
 
 
 def fetch_stock_data(ticker: str, period: str = "1y") -> Optional[pd.DataFrame]:
@@ -181,7 +182,10 @@ def analyze_stock(ticker: str, period: str = "1y") -> Dict[str, Any]:
     # 6. Fibonacci levels
     fib_levels = calculate_fibonacci_levels(df, period=120)
 
-    # 7. Prepare summary data (Token-Optimized: < 500 tokens)
+    # 7. News sentiment analysis (NEW - Phase 2)
+    news_sentiment = get_news_sentiment(ticker, max_items=10)
+
+    # 8. Prepare summary data (Token-Optimized: < 500 tokens)
     summary = {
         "ticker": ticker,
         "name": stock_info.get("name", ticker),
@@ -229,7 +233,17 @@ def analyze_stock(ticker: str, period: str = "1y") -> Dict[str, Any]:
             "ev_to_ebitda": stock_info.get("ev_to_ebitda", 0),
             "price_to_book": stock_info.get("price_to_book", 0)
         },
-        "fibonacci_levels": fib_levels
+        "fibonacci_levels": fib_levels,
+        # NEW: News sentiment (Phase 2)
+        "news_sentiment": {
+            "news_count": news_sentiment.get("news_count", 0),
+            "positive": news_sentiment.get("sentiment", {}).get("positive", 0),
+            "neutral": news_sentiment.get("sentiment", {}).get("neutral", 0),
+            "negative": news_sentiment.get("sentiment", {}).get("negative", 0),
+            "overall": news_sentiment.get("sentiment", {}).get("overall", "중립"),
+            "confidence": news_sentiment.get("sentiment", {}).get("confidence", "낮음"),
+            "summary": news_sentiment.get("sentiment", {}).get("summary", "")
+        }
     }
 
     # 8. Save full data to temp file (Token Optimization)
@@ -244,7 +258,8 @@ def analyze_stock(ticker: str, period: str = "1y") -> Dict[str, Any]:
     full_data = {
         "summary": summary,
         "historical_data": df.tail(100).to_dict(orient='records'),  # Last 100 days only
-        "stock_info": stock_info
+        "stock_info": stock_info,
+        "news_sentiment": news_sentiment  # Full news data with headlines
     }
 
     json.dump(full_data, temp_file, ensure_ascii=False, indent=2)
@@ -292,6 +307,7 @@ def generate_ai_analysis(analysis_result: Dict[str, Any]) -> str:
     summary = analysis_result.get("summary", {})
     tech = summary.get("technical_indicators", {})
     fund = summary.get("fundamentals", {})
+    news = summary.get("news_sentiment", {})
 
     user_prompt = f"""종목: {summary.get('ticker')} ({summary.get('name')})
 데이터 파일: {data_file}
@@ -317,7 +333,13 @@ def generate_ai_analysis(analysis_result: Dict[str, Any]) -> str:
 - 성장성: EPS 성장률 {fund.get('eps_growth', 0):+.1f}%, 매출 성장률 {fund.get('revenue_growth', 0):+.1f}%
 - 베타: {fund.get('beta', 0):.2f}
 
-위 데이터를 바탕으로 Bottom-Up 분석 원칙에 따라 투자 의견을 작성하세요."""
+## 뉴스 및 시장 심리 (NEW - Phase 2)
+- 뉴스 개수: {news.get('news_count', 0)}개
+- 감성 분석: 긍정 {news.get('positive', 0):.0f}% / 중립 {news.get('neutral', 0):.0f}% / 부정 {news.get('negative', 0):.0f}%
+- 종합 평가: {news.get('overall', '중립')} (신뢰도: {news.get('confidence', '낮음')})
+- 요약: {news.get('summary', '뉴스 없음')}
+
+위 데이터를 바탕으로 Bottom-Up 분석 5개 차원을 모두 고려하여 투자 의견을 작성하세요."""
 
     full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
