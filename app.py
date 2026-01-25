@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from core.memory import MemorySystem
 from agents.crews.finance_crew import FinanceCrew
-from pages_stock_analysis import render_stock_analysis_page
+from pages.stock_analysis import render_stock_analysis_page
 
 # --- 1. Page Config ---
 st.set_page_config(page_title="GEM: OMNI Command Center", page_icon="💎", layout="wide", initial_sidebar_state="expanded")
