@@ -92,41 +92,154 @@ def render_stock_analysis_page():
         # Fundamental Insight
         fund_insight = get_fundamental_insight(summary)
         st.info(f"🤖 **AI 펀더멘털 요약**: {fund_insight}")
+
+        # 1. Analyst Ratings (Moved Up)
+        render_analyst_ratings(ticker)
         
+        st.divider()
+
+        # 2. Fundamentals Table
         render_fundamentals(summary)
         st.divider()
         
-        # Integrated Research Section
+        # 3. Research & Valuation
         st.markdown("### 📝 리서치 & 실적")
         render_earnings_analysis(ticker)
         st.divider()
         render_valuation_analysis(ticker)
-        render_optional_sections(ticker) # Analyst Ratings moved here
+        
+        # 4. Other Optional Sections
+        render_insider_trading(ticker)
         
     with t3:
         render_ai_section(res)
 
 
-def render_optional_sections(ticker: str):
-    """Render sections only if data is significant"""
-    from skills.news_analyzer import get_analyst_ratings, get_insider_transactions
-    
-    # Analyst Ratings
+def render_analyst_ratings(ticker: str):
+    """Render Analyst Ratings with color coding"""
+    from skills.news_analyzer import get_analyst_ratings
     ratings = get_analyst_ratings(ticker)
-    if ratings.get('status') != 'error' and ratings.get('target_mean'):
-        st.divider()
-        st.markdown("### 💼 애널리스트 의견")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("컨센서스", ratings.get('consensus', 'N/A'))
-        c2.metric("목표가 (평균)", f"${ratings.get('target_mean', 0):,.2f}")
-        c3.metric("상승 여력", f"{ratings.get('upside_pct', 0):+.1f}%")
+    
+    if ratings.get('status') == 'error' or not ratings.get('target_mean'):
+        return
 
-    # Insider (Only if significant)
+    st.markdown("### 💼 애널리스트 의견")
+    c1, c2, c3 = st.columns(3)
+    
+    # Consensus Color
+    cons = ratings.get('consensus', 'N/A')
+    
+    # Delta for color coding
+    cons_delta = None
+    if 'Buy' in cons or 'Outperform' in cons: 
+        cons_delta = "+Good" # Green
+    elif 'Sell' in cons or 'Underperform' in cons: 
+        cons_delta = "-Bad" # Red
+    elif 'Hold' in cons:
+        cons_delta = "Neutral" # Gray
+    
+    c1.metric("컨센서스", cons, delta=cons_delta, delta_color="normal")
+    c2.metric("목표가 (평균)", f"${ratings.get('target_mean', 0):,.2f}")
+    
+    # Upside Color
+    upside = ratings.get('upside_pct', 0)
+    # Use +Good/-Bad instead of repeating number
+    upside_delta = None
+    if upside > 0: upside_delta = "+Good"
+    elif upside < 0: upside_delta = "-Bad"
+
+    c3.metric("상승 여력", f"{upside:+.1f}%", delta=upside_delta, delta_color="normal")
+
+def render_insider_trading(ticker: str):
+    """Render Insider Trading (Moved from optional_sections)"""
+    from skills.news_analyzer import get_insider_transactions
     insider = get_insider_transactions(ticker)
     if insider.get('status') == 'success' and (insider.get('buy_count', 0) > 0 or insider.get('sell_count', 0) > 0):
         st.divider()
         st.markdown("### 🔐 내부자 거래")
         st.info(f"내부자 심리: {insider.get('sentiment')} | {insider.get('recent_summary')}")
+
+def render_fundamentals(summary):
+    fund = summary.get('fundamentals', {})
+    
+    def format_metric(label, value, suffix="", good_thresh=None, bad_thresh=None, higher_is_better=True, help_text=None):
+        """Helper to render metric with color coding based on thresholds"""
+        
+        delta_val = None
+        if good_thresh is not None and bad_thresh is not None:
+            is_good = value >= good_thresh if higher_is_better else value <= good_thresh
+            is_bad = value <= bad_thresh if higher_is_better else value >= bad_thresh
+            
+            if is_good: 
+                # Use + for Green in 'normal' mode
+                delta_val = "+Good"
+            elif is_bad: 
+                # Use - for Red in 'normal' mode
+                delta_val = "-Caution"
+        
+        # Display
+        display_val = f"{value:,.1f}{suffix}" if isinstance(value, (int, float)) else value
+        if value is None or value == 0:
+             display_val = "-"
+             delta_val = None
+
+        st.metric(label, display_val, delta=delta_val, delta_color="normal", help=help_text)
+
+    # Row 1: Valuation & PEG
+    st.markdown("##### 💎 밸류에이션 & 성장 (PEG)")
+    c1, c2, c3, c4 = st.columns(4)
+    
+    with c1:
+        st.metric("시가총액", f"${fund.get('market_cap', 0)/1e9:.1f}B")
+    with c2:
+        pe = fund.get('pe_ratio', 0)
+        format_metric("P/E (PER)", pe, good_thresh=15, bad_thresh=30, higher_is_better=False)
+    with c3:
+        # PEG Logic
+        peg = fund.get('peg_ratio', 0)
+        peg_label = "PEG (성장가치)"
+        
+        # Calculate PEG if missing and data available
+        if (peg is None or peg == 0) and fund.get('eps_growth', 0) > 0 and fund.get('pe_ratio', 0) > 0:
+            peg = fund.get('pe_ratio') / fund.get('eps_growth')
+            peg_label = "PEG (추정)"
+        
+        if peg is not None and peg > 0:
+            format_metric(peg_label, peg, good_thresh=1.0, bad_thresh=2.0, higher_is_better=False, help_text="< 1.0: 저평가, > 2.0: 고평가")
+        else:
+            st.metric(peg_label, "N/A", help="데이터 부족으로 계산 불가")
+        
+    with c4:
+        format_metric("EPS 성장률", fund.get('eps_growth', 0), "%", good_thresh=10, bad_thresh=0)
+
+    st.divider()
+
+    # Row 2: Profitability
+    st.markdown("##### 💰 수익성 (Profitability)")
+    c5, c6, c7, c8 = st.columns(4)
+    with c5:
+        format_metric("ROE (자기자본이익률)", fund.get('roe', 0), "%", good_thresh=15, bad_thresh=5)
+    with c6:
+        format_metric("영업이익률", fund.get('operating_margin', 0), "%", good_thresh=10, bad_thresh=0)
+    with c7:
+        format_metric("순이익률", fund.get('profit_margin', 0), "%", good_thresh=10, bad_thresh=0)
+    with c8:
+         format_metric("매출 성장률", fund.get('revenue_growth', 0), "%", good_thresh=10, bad_thresh=0)
+
+    st.divider()
+
+    # Row 3: Financial Health
+    st.markdown("##### 🛡️ 재무 건전성 (Health)")
+    c9, c10, c11, c12 = st.columns(4)
+    with c9:
+        format_metric("부채비율", fund.get('debt_to_equity', 0), "%", good_thresh=100, bad_thresh=200, higher_is_better=False)
+    with c10:
+        format_metric("유동비율", fund.get('current_ratio', 0), "", good_thresh=1.5, bad_thresh=1.0)
+    with c11:
+        div = fund.get('dividend_yield', 0)
+        st.metric("배당수익률", f"{div:.1f}%" if div else "-")
+    with c12:
+        st.metric("Beta (변동성)", f"{fund.get('beta', 0):.2f}")
 
 
 def render_ai_section(res: dict):
@@ -168,6 +281,28 @@ def render_ai_section(res: dict):
                 # Update Home Activity Log
                 st.session_state.ai_insights = f"[{res['ticker']}] CrewAI 심층 분석 완료"
                 st.rerun()
+
+def render_earnings_analysis(ticker):
+    try:
+        from skills.earnings_analyzer import analyze_earnings_trend
+        res = analyze_earnings_trend(ticker)
+        if 'error' not in res:
+            st.markdown(f"**📊 실적 추세**: {res.get('revenue_trend', {}).get('summary', '데이터 없음')}")
+            st.caption(f"실적 품질 스코어: {res.get('quality_score', 0)}/10")
+    except: st.caption("실적 분석 데이터 로드 실패")
+
+def render_valuation_analysis(ticker: str):
+    try:
+        from skills.valuation_engine import calculate_valuation_metrics
+        res = calculate_valuation_metrics(ticker)
+        if 'error' not in res:
+            st.markdown(f"### ⚖️ 밸류에이션: **{res.get('style')}**")
+            st.info(res.get('summary', ''))
+            key_m = res.get('style_analysis', {}).get('key_metrics', {})
+            if key_m:
+                cols = st.columns(len(key_m))
+                for i, (k, v) in enumerate(key_m.items()): cols[i].metric(k, v)
+    except: st.error("밸류에이션 분석 중 오류 발생")
 
 # --- Utility Renderers (Simplified) ---
 def render_price_chart(df, ticker):
@@ -240,102 +375,3 @@ def render_technical_indicators(summary):
     st.metric("RSI (14)", f"{tech.get('rsi', 0):.1f}")
     st.metric("MACD", f"{tech.get('macd', 0):.2f}")
     st.metric("MFI (자금흐름)", f"{tech.get('mfi', 0):.1f}")
-
-def render_fundamentals(summary):
-    fund = summary.get('fundamentals', {})
-    
-    def format_metric(label, value, suffix="", good_thresh=None, bad_thresh=None, higher_is_better=True, help_text=None):
-        """Helper to render metric with color coding based on thresholds"""
-        color = "normal"
-        if good_thresh is not None and bad_thresh is not None:
-            if higher_is_better:
-                if value >= good_thresh: color = "off" # Greenish in dark mode usually implies normal or we use delta
-                elif value <= bad_thresh: color = "inverse" # Red
-            else: # Lower is better (e.g., PER, Debt)
-                if value <= good_thresh: color = "off"
-                elif value >= bad_thresh: color = "inverse"
-        
-        # Streamlit metric doesn't allow direct text color change easily without delta.
-        # We will use delta to indicate "Good" (Green) or "Bad" (Red) implicitly.
-        delta_val = None
-        if good_thresh is not None:
-            is_good = value >= good_thresh if higher_is_better else value <= good_thresh
-            is_bad = value <= bad_thresh if higher_is_better else value >= bad_thresh
-            
-            if is_good: delta_val = "Good"
-            elif is_bad: delta_val = "-Caution"
-            
-        st.metric(label, f"{value:,.1f}{suffix}", delta=delta_val, delta_color="normal" if delta_val == "Good" else "inverse", help=help_text)
-
-    # Row 1: Valuation & PEG
-    st.markdown("##### 💎 밸류에이션 & 성장 (PEG)")
-    c1, c2, c3, c4 = st.columns(4)
-    
-    with c1:
-        st.metric("시가총액", f"${fund.get('market_cap', 0)/1e9:.1f}B")
-    with c2:
-        pe = fund.get('pe_ratio', 0)
-        format_metric("P/E (PER)", pe, good_thresh=15, bad_thresh=30, higher_is_better=False)
-    with c3:
-        # PEG Logic
-        peg = fund.get('peg_ratio', 0)
-        peg_label = "PEG (성장가치)"
-        if peg == 0 and fund.get('eps_growth', 0) > 0:
-            peg = pe / fund.get('eps_growth')
-            peg_label = "PEG (추정)"
-        
-        format_metric(peg_label, peg, good_thresh=1.0, bad_thresh=2.0, higher_is_better=False, help_text="< 1.0: 저평가, > 2.0: 고평가")
-        
-    with c4:
-        format_metric("EPS 성장률", fund.get('eps_growth', 0), "%", good_thresh=10, bad_thresh=0)
-
-    st.divider()
-
-    # Row 2: Profitability
-    st.markdown("##### 💰 수익성 (Profitability)")
-    c5, c6, c7, c8 = st.columns(4)
-    with c5:
-        format_metric("ROE (자기자본이익률)", fund.get('roe', 0), "%", good_thresh=15, bad_thresh=5)
-    with c6:
-        format_metric("영업이익률", fund.get('operating_margin', 0), "%", good_thresh=10, bad_thresh=0)
-    with c7:
-        format_metric("순이익률", fund.get('profit_margin', 0), "%", good_thresh=10, bad_thresh=0)
-    with c8:
-         format_metric("매출 성장률", fund.get('revenue_growth', 0), "%", good_thresh=10, bad_thresh=0)
-
-    st.divider()
-
-    # Row 3: Financial Health
-    st.markdown("##### 🛡️ 재무 건전성 (Health)")
-    c9, c10, c11, c12 = st.columns(4)
-    with c9:
-        format_metric("부채비율", fund.get('debt_to_equity', 0), "%", good_thresh=100, bad_thresh=200, higher_is_better=False)
-    with c10:
-        format_metric("유동비율", fund.get('current_ratio', 0), "", good_thresh=1.5, bad_thresh=1.0)
-    with c11:
-        div = fund.get('dividend_yield', 0)
-        st.metric("배당수익률", f"{div:.1f}%" if div else "-")
-    with c12:
-        st.metric("Beta (변동성)", f"{fund.get('beta', 0):.2f}")
-
-def render_earnings_analysis(ticker):
-    try:
-        from skills.earnings_analyzer import analyze_earnings_trend
-        res = analyze_earnings_trend(ticker)
-        if 'error' not in res:
-            st.markdown(f"**📊 실적 추세**: {res.get('revenue_trend', {}).get('summary', '데이터 없음')}")
-            st.caption(f"실적 품질 스코어: {res.get('quality_score', 0)}/10")
-    except: st.caption("실적 분석 데이터 로드 실패")
-
-def render_valuation_analysis(ticker: str):
-    try:
-        from skills.valuation_engine import calculate_valuation_metrics
-        res = calculate_valuation_metrics(ticker)
-        if 'error' not in res:
-            st.markdown(f"### ⚖️ 밸류에이션: **{res.get('style')}**")
-            st.info(res.get('summary', ''))
-            key_m = res.get('style_analysis', {}).get('key_metrics', {})
-            if key_m:
-                cols = st.columns(len(key_m))
-                for i, (k, v) in enumerate(key_m.items()): cols[i].metric(k, v)
-    except: st.error("밸류에이션 분석 중 오류 발생")

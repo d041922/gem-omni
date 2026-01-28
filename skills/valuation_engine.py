@@ -78,7 +78,7 @@ class ValuationEngine:
             return {'error': str(e), 'ticker': ticker}
 
     def _get_multiples_strictly(self, info: Dict) -> Dict:
-        """실제 공시/시장 데이터만 수집 (추측성 Default 제거)"""
+        """실제 공시/시장 데이터만 수집 (추측성 Default 제거 및 PEG 보완)"""
         pe = info.get('trailingPE') or info.get('forwardPE')
         
         # 산술적으로 확실한 경우에만 직접 계산 허용
@@ -87,10 +87,17 @@ class ValuationEngine:
             income = info.get('netIncomeToCommon')
             if mcap and income and income > 0:
                 pe = mcap / income # 공식: 시가총액 / 순이익
+        
+        # PEG 보완 계산
+        peg = info.get('pegRatio')
+        if (peg is None or peg == 0) and pe:
+            growth = info.get('earningsQuarterlyGrowth')
+            if growth and growth > 0:
+                peg = pe / (growth * 100) # growth는 0.15 형태이므로 100 곱함
 
         return {
             'pe_ratio': pe,
-            'peg_ratio': info.get('pegRatio'),
+            'peg_ratio': peg,
             'price_to_book': info.get('priceToBook'),
             'price_to_sales': info.get('priceToSalesTrailing12Months')
         }
@@ -154,7 +161,15 @@ class ValuationEngine:
         summary = f"성장주 분석: 실측 데이터 기반 점수 {final_score:.1f}/10 ({assessment})."
         if missing: summary += f" (참고: {', '.join(missing)} 데이터 부재로 분석 제한됨)"
         
-        return {'score': round(final_score, 1), 'assessment': assessment, 'summary': summary, 'key_metrics': {'PEG': peg, 'ROE': roe}}
+        # Format metrics
+        metrics = {}
+        if peg is not None: metrics['PEG'] = f"{peg:.2f}"
+        else: metrics['PEG'] = "N/A"
+        
+        if roe is not None: metrics['ROE'] = f"{roe:.1f}%"
+        else: metrics['ROE'] = "N/A"
+        
+        return {'score': round(final_score, 1), 'assessment': assessment, 'summary': summary, 'key_metrics': metrics}
 
     def _analyze_as_value(self, info: Dict, multiples: Dict, profit: Dict) -> Dict:
         pb = multiples.get('price_to_book')
@@ -182,7 +197,12 @@ class ValuationEngine:
         final_score = (score / weights * 10) if weights > 0 else 0
         assessment = 'undervalued' if final_score >= 7 else 'fair_value' if final_score >= 4 else 'overvalued'
         
-        return {'score': round(final_score, 1), 'assessment': assessment, 'summary': f"가치주 분석: 실측 데이터 기반 점수 {final_score:.1f}/10", 'key_metrics': {'P/B': pb, '배당': f"{div:.1f}%"}}
+        metrics = {}
+        if pb: metrics['P/B'] = f"{pb:.2f}"
+        if div: metrics['배당'] = f"{div:.1f}%"
+        if pe: metrics['PER'] = f"{pe:.1f}"
+
+        return {'score': round(final_score, 1), 'assessment': assessment, 'summary': f"가치주 분석: 실측 데이터 기반 점수 {final_score:.1f}/10", 'key_metrics': metrics}
 
     def _analyze_as_cyclical(self, stock, info: Dict, multiples: Dict) -> Dict:
         # 경기주는 과거 데이터가 필수
@@ -206,10 +226,15 @@ class ValuationEngine:
     def _analyze_as_hybrid(self, info: Dict, multiples: Dict, profit: Dict) -> Dict:
         pe = multiples.get('pe_ratio')
         roe = profit.get('roe')
+        metrics = {}
+        
+        if pe: metrics['PER'] = f"{pe:.1f}"
+        if roe: metrics['ROE'] = f"{roe:.1f}%"
+
         if pe and roe:
             score = (5 if pe < 20 else 0) + (5 if roe > 15 else 0)
-            return {'score': float(score), 'assessment': 'fair_value' if score >= 5 else 'overvalued', 'summary': "일반 종목 분석 수행 완료"}
-        return {'score': 0, 'assessment': 'unknown', 'summary': "기초 데이터 부족으로 분석 불가"}
+            return {'score': float(score), 'assessment': 'fair_value' if score >= 5 else 'overvalued', 'summary': "일반 종목 분석 수행 완료", 'key_metrics': metrics}
+        return {'score': 0, 'assessment': 'unknown', 'summary': "기초 데이터 부족으로 분석 불가", 'key_metrics': metrics}
 
     def _get_cash_flow_metrics(self, stock, info: Dict) -> Dict:
         # 현금흐름은 있으면 좋고 없으면 0

@@ -166,6 +166,14 @@ else:
         # [좌측: Health]
         with col_health:
             st.markdown("<p class='panel-header'>🛡️ Portfolio Health</p>", unsafe_allow_html=True)
+            
+            # Refresh Button
+            if st.button("🔄 Refresh Data", width="stretch"):
+                with st.spinner("Refreshing data from Google Sheets..."):
+                    load_portfolio_data(force_refresh=True)
+                    st.success("Data updated!")
+                    st.rerun()
+            
             if st.button("🔍 Run AI Analysis", width="stretch", type="primary"):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -203,7 +211,7 @@ else:
                     """
                     
                     response = client.models.generate_content(
-                        model="gemini-2.0-flash-exp",
+                        model="gemini-2.0-flash",
                         contents=prompt
                     )
                     
@@ -240,16 +248,31 @@ else:
             # Summary metrics (always show from calculated data)
             if 'calculated_portfolio' in st.session_state:
                 result_df = st.session_state.calculated_portfolio
-    
-                col1, col2, col3 = st.columns(3)
+                cash_df = st.session_state.get('cash_df', pd.DataFrame())
+
+                total_stock_value = result_df['평가금액(KRW)'].sum()
                 total_cost = result_df['매수금액(KRW)'].sum()
-                total_value = result_df['평가금액(KRW)'].sum()
                 total_profit = result_df['손익(KRW)'].sum()
                 return_pct = (total_profit / total_cost * 100) if total_cost > 0 else 0
+                
+                # Calculate Cash
+                total_cash = 0
+                if not cash_df.empty:
+                    amount_col = None
+                    for col in ['금액', 'amount', '금액(KRW)', 'Amount']:
+                        if col in cash_df.columns:
+                            amount_col = col
+                            break
+                    if amount_col:
+                        total_cash = pd.to_numeric(cash_df[amount_col], errors='coerce').sum()
+                
+                total_assets = total_stock_value + total_cash
     
-                col1.metric("Total Cost", f"₩{total_cost/1e8:.1f}억", f"{return_pct:.1f}%")
-                col2.metric("Total Value", f"₩{total_value/1e8:.1f}억")
-                col3.metric("Profit/Loss", f"₩{total_profit/1e6:.0f}백만")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Total Assets", f"₩{total_assets/1e8:.1f}억")
+                c2.metric("Stock Value", f"₩{total_stock_value/1e8:.1f}억", f"{return_pct:.1f}%")
+                c3.metric("Cash", f"₩{total_cash/1e6:.0f}백만")
+                c4.metric("Total Profit", f"₩{total_profit/1e6:.0f}백만")
     
             # AI insights (show only after button click)
             if 'ai_insights' in st.session_state:

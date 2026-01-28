@@ -351,7 +351,7 @@ def generate_ai_analysis(analysis_result: Dict[str, Any]) -> str:
     try:
         client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
         response = client.models.generate_content(
-            model="gemini-2.0-flash-exp",
+            model="gemini-2.0-flash",
             contents=full_prompt
         )
         return response.text
@@ -385,7 +385,7 @@ def get_technical_insight(summary: Dict[str, Any]) -> str:
     return " | ".join(insights)
 
 def get_fundamental_insight(summary: Dict[str, Any]) -> str:
-    """Generate a one-line rule-based fundamental insight."""
+    """Generate a descriptive rule-based fundamental insight."""
     fund = summary.get('fundamentals', {})
     roe = fund.get('roe', 0)
     peg = fund.get('peg_ratio', 0)
@@ -393,16 +393,19 @@ def get_fundamental_insight(summary: Dict[str, Any]) -> str:
     
     insights = []
     
-    # ROE
-    if roe > 15: insights.append(f"💎 고수익성(ROE {roe:.0f}%)")
-    elif roe < 5: insights.append(f"⚠️ 낮은 수익성")
+    # ROE (Profitability)
+    if roe > 20: insights.append(f"수익성이 매우 탁월합니다(ROE {roe:.0f}%).")
+    elif roe > 15: insights.append(f"수익성이 우수합니다(ROE {roe:.0f}%).")
+    elif roe < 5: insights.append(f"수익성이 다소 저조합니다(ROE {roe:.0f}%).")
     
-    # PEG
-    if 0 < peg < 1.0: insights.append("🚀 성장 대비 저평가(PEG<1)")
-    elif peg > 2.0: insights.append("⚠️ 고평가 우려(PEG>2)")
+    # PEG (Growth Valuation)
+    if 0 < peg < 0.8: insights.append("성장성 대비 주가가 매우 저평가 상태입니다(PEG < 0.8).")
+    elif 0 < peg < 1.0: insights.append("성장성 대비 주가가 저평가되었습니다(PEG < 1.0).")
+    elif peg > 2.0: insights.append("성장성을 감안해도 주가가 다소 고평가되었습니다(PEG > 2.0).")
     
-    # PBR
-    if pbr < 1.0: insights.append("🛡️ 자산가치 저평가(PBR<1)")
+    # PBR (Asset Valuation)
+    if pbr < 0.8: insights.append("자산가치 대비 크게 저평가되었습니다(PBR < 0.8).")
 
-    if not insights: return "특이사항 없는 밸류에이션"
-    return " | ".join(insights)
+    if not insights: return "밸류에이션 및 수익성 지표가 대체로 적정 범위 내에 있습니다."
+    
+    return " ".join(insights)

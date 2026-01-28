@@ -190,8 +190,18 @@ Use clear language that investors can understand and act upon.""",
             if progress_callback:
                 progress_callback(1, 4, "Syncing data from Google Sheets + KIS API")
 
-            # Execute crew workflow
-            result = self.crew.kickoff()
+            # Monkeypatch signal to avoid "signal only works in main thread" error in Streamlit
+            import signal
+            original_signal = signal.signal
+            try:
+                # Disable signal handlers during Crew execution
+                signal.signal = lambda *args, **kwargs: None
+                
+                # Execute crew workflow
+                result = self.crew.kickoff()
+            finally:
+                # Restore original signal handler
+                signal.signal = original_signal
 
             if progress_callback:
                 progress_callback(4, 4, "Analysis complete")

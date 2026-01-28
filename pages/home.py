@@ -16,7 +16,11 @@ def render_home_page():
 
     st.divider()
 
-    # === SECTION 0: Agent Strategic Briefing (NEW) ===
+    # === SECTION 0: Data Loading (Moved to Top) ===
+    if 'calculated_portfolio' not in st.session_state or 'cash_df' not in st.session_state:
+        load_portfolio_data()
+
+    # === SECTION 0.5: Agent Strategic Briefing (NEW) ===
     from skills.agent_briefing import AgentBriefing
     
     # Aggregating Context
@@ -56,10 +60,13 @@ def render_home_page():
     st.divider()
 
     # === SECTION 1: Quick Stats (Asset Summary) ===
-    st.markdown("<p class='panel-header'>📊 자산 현황 요약</p>", unsafe_allow_html=True)
-
-    if 'calculated_portfolio' not in st.session_state:
-        load_portfolio_data()
+    c_head, c_btn = st.columns([0.8, 0.2])
+    with c_head:
+        st.markdown("<p class='panel-header'>📊 자산 현황 요약</p>", unsafe_allow_html=True)
+    with c_btn:
+        if st.button("🔄 데이터 갱신", key="home_refresh"):
+             load_portfolio_data(force_refresh=True)
+             st.rerun()
 
     if 'calculated_portfolio' in st.session_state and not st.session_state.calculated_portfolio.empty:
         result_df = st.session_state.calculated_portfolio

@@ -19,7 +19,7 @@ class AgentBriefing:
         
         # Initialize LLM using the same standard as other agents
         self.llm = LLM(
-            model="gemini/gemini-2.0-flash-exp",
+            model="gemini/gemini-2.0-flash",
             temperature=0.3
         )
         

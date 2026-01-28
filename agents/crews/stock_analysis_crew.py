@@ -16,7 +16,7 @@ import os
 
 # Configure Gemini LLM
 gemini_llm = LLM(
-    model="gemini/gemini-2.0-flash-exp",
+    model="gemini/gemini-2.0-flash",
     api_key=os.getenv("GOOGLE_API_KEY")
 )
 
@@ -339,7 +339,15 @@ def run_stock_analysis(
         )
 
         # Execute
-        result = crew.kickoff()
+        # Monkeypatch signal to avoid "signal only works in main thread" error
+        import signal
+        original_signal = signal.signal
+        try:
+            signal.signal = lambda *args, **kwargs: None
+            result = crew.kickoff()
+        finally:
+            signal.signal = original_signal
+            
         return str(result)
     except Exception as e:
         return f"""# 분석 오류

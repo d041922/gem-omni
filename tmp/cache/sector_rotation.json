@@ -4,170 +4,177 @@
       {
         "name": "Energy",
         "ticker": "XLE",
-        "current_price": 49.189998626708984,
-        "return_1m": 10.863195426765076,
-        "return_3m": 13.574433704987122,
+        "current_price": 49.66999816894531,
+        "return_1m": 11.317793271957914,
+        "return_3m": 14.512299392061712,
         "volume_trend": "increasing",
-        "volume_ratio": 1.5373431926073018,
-        "rsi": 70.11363907294098,
+        "volume_ratio": 1.56024794034228,
+        "rsi": 79.67601446327888,
+        "momentum_score": 8.5,
+        "status": "strong"
+      },
+      {
+        "name": "Materials",
+        "ticker": "XLB",
+        "current_price": 49.97999954223633,
+        "return_1m": 9.269780734978879,
+        "return_3m": 16.602063049866814,
+        "volume_trend": "stable",
+        "volume_ratio": 1.1064531895453704,
+        "rsi": 71.52778007734037,
         "momentum_score": 8.5,
         "status": "strong"
       },
       {
         "name": "Consumer Staples",
         "ticker": "XLP",
-        "current_price": 82.91000366210938,
-        "return_1m": 6.131593378287381,
-        "return_3m": 6.560203017014834,
+        "current_price": 83.16000366210938,
+        "return_1m": 6.234038015983134,
+        "return_3m": 9.578008051307684,
         "volume_trend": "increasing",
-        "volume_ratio": 1.5843980422604953,
-        "rsi": 80.85099091689573,
+        "volume_ratio": 1.4330854329536398,
+        "rsi": 83.4311733812911,
         "momentum_score": 7.5,
         "status": "strong"
       },
       {
-        "name": "Materials",
-        "ticker": "XLB",
-        "current_price": 49.970001220703125,
-        "return_1m": 9.009600903943443,
-        "return_3m": 12.757777560667405,
+        "name": "Industrials",
+        "ticker": "XLI",
+        "current_price": 165.05999755859375,
+        "return_1m": 5.220885252968883,
+        "return_3m": 7.069183595114439,
         "volume_trend": "stable",
-        "volume_ratio": 1.0938719721428891,
-        "rsi": 77.38265197873103,
-        "momentum_score": 6.5,
+        "volume_ratio": 1.042411379312746,
+        "rsi": 57.539670225286756,
+        "momentum_score": 6.0,
         "status": "moderate"
       }
     ],
     "lagging_sectors": [
       {
-        "name": "Technology",
-        "ticker": "XLK",
-        "current_price": 145.08999633789062,
-        "return_1m": -0.8270722410300382,
-        "return_3m": -3.7554202379843797,
-        "volume_trend": "stable",
-        "volume_ratio": 1.0658827691849577,
-        "rsi": 52.27664291801482,
-        "momentum_score": 1.0,
-        "status": "very_weak"
-      },
-      {
         "name": "Financials",
         "ticker": "XLF",
-        "current_price": 53.06999969482422,
-        "return_1m": -4.7730125054032415,
-        "return_3m": 0.5010030608345379,
+        "current_price": 53.0,
+        "return_1m": -4.193781105608502,
+        "return_3m": 1.8289085372762752,
         "volume_trend": "increasing",
-        "volume_ratio": 1.223386032356403,
-        "rsi": 37.047350060620744,
+        "volume_ratio": 1.2332037024249787,
+        "rsi": 23.684194986565885,
         "momentum_score": 1.0,
         "status": "very_weak"
       },
       {
-        "name": "Consumer Discretionary",
-        "ticker": "XLY",
-        "current_price": 123.12999725341797,
-        "return_1m": 0.4404934592207325,
-        "return_3m": 2.3256328550920378,
+        "name": "Healthcare",
+        "ticker": "XLV",
+        "current_price": 155.4499969482422,
+        "return_1m": -0.2310510339467665,
+        "return_3m": 8.185694738468548,
         "volume_trend": "stable",
-        "volume_ratio": 0.807459875231888,
-        "rsi": 64.20929063769489,
-        "momentum_score": 2.0,
-        "status": "very_weak"
-      },
-      {
-        "name": "Utilities",
-        "ticker": "XLU",
-        "current_price": 42.560001373291016,
-        "return_1m": -0.5839756878773986,
-        "return_3m": -4.851098951846943,
-        "volume_trend": "increasing",
-        "volume_ratio": 1.2430001973553162,
-        "rsi": 43.318981640959954,
+        "volume_ratio": 0.919437161879574,
+        "rsi": 41.30437186318591,
         "momentum_score": 2.0,
         "status": "very_weak"
       },
       {
         "name": "Communication Services",
         "ticker": "XLC",
-        "current_price": 116.95999908447266,
-        "return_1m": -0.9568949855707594,
-        "return_3m": 0.650748979142299,
+        "current_price": 116.9000015258789,
+        "return_1m": -0.8397640757443756,
+        "return_3m": 2.5878697609595416,
         "volume_trend": "increasing",
-        "volume_ratio": 1.2652298759831566,
-        "rsi": 50.292385484830454,
+        "volume_ratio": 1.253567827765663,
+        "rsi": 47.98500435096912,
         "momentum_score": 2.0,
         "status": "very_weak"
+      },
+      {
+        "name": "Technology",
+        "ticker": "XLK",
+        "current_price": 148.0500030517578,
+        "return_1m": 1.4944868770434665,
+        "return_3m": -1.2786376609603742,
+        "volume_trend": "stable",
+        "volume_ratio": 1.0400447172166103,
+        "rsi": 53.89758076506446,
+        "momentum_score": 3.0,
+        "status": "weak"
       }
     ],
     "neutral_sectors": [
       {
-        "name": "Healthcare",
-        "ticker": "XLV",
-        "current_price": 157.47999572753906,
-        "return_1m": 1.07830079773692,
-        "return_3m": 8.731945319908538,
-        "volume_trend": "stable",
-        "volume_ratio": 0.9627498694098535,
-        "rsi": 56.38366253898748,
+        "name": "Consumer Discretionary",
+        "ticker": "XLY",
+        "current_price": 122.69000244140625,
+        "return_1m": 1.522551916026028,
+        "return_3m": 5.183441854368518,
+        "volume_trend": "decreasing",
+        "volume_ratio": 0.684109911962721,
+        "rsi": 55.30106447198065,
         "momentum_score": 4.0,
         "status": "weak"
-      },
-      {
-        "name": "Industrials",
-        "ticker": "XLI",
-        "current_price": 164.22000122070312,
-        "return_1m": 4.26666744171627,
-        "return_3m": 6.5312006217862555,
-        "volume_trend": "stable",
-        "volume_ratio": 1.018303641874107,
-        "rsi": 63.35617579221919,
-        "momentum_score": 5.0,
-        "status": "moderate"
       },
       {
         "name": "Real Estate",
         "ticker": "XLRE",
         "current_price": 41.25,
-        "return_1m": 2.002970822941726,
-        "return_3m": -0.21340708855554424,
+        "return_1m": 1.5259633659505745,
+        "return_3m": 2.0078686156643677,
         "volume_trend": "increasing",
-        "volume_ratio": 1.3056092330175684,
-        "rsi": 59.819408816177095,
+        "volume_ratio": 1.3242352093091316,
+        "rsi": 56.59472400124778,
+        "momentum_score": 5.0,
+        "status": "moderate"
+      },
+      {
+        "name": "Utilities",
+        "ticker": "XLU",
+        "current_price": 43.43000030517578,
+        "return_1m": 1.3299106082759882,
+        "return_3m": -2.462395478264714,
+        "volume_trend": "increasing",
+        "volume_ratio": 1.3131388693953905,
+        "rsi": 55.39419169235517,
         "momentum_score": 5.0,
         "status": "moderate"
       }
     ],
     "money_flow": {
       "from": [
-        "Technology",
         "Financials",
-        "Consumer Discretionary"
+        "Healthcare",
+        "Communication Services"
       ],
       "to": [
         "Energy",
-        "Consumer Staples",
-        "Materials"
+        "Materials",
+        "Consumer Staples"
       ],
-      "summary": "Energy, Consumer Staples 섹터로 자금 유입 중"
+      "summary": "Energy, Materials 섹터로 자금 유입 중"
     },
     "recommendations": [
       {
         "action": "overweight",
         "sector": "Energy",
         "ticker": "XLE",
-        "reason": "모멘텀 스코어 8.5, 1개월 수익률 +10.9%",
+        "reason": "모멘텀 스코어 8.5, 1개월 수익률 +11.3%",
         "priority": "high"
       },
       {
         "action": "underweight",
-        "sector": "Technology",
-        "ticker": "XLK",
-        "reason": "모멘텀 약화 1.0, 1개월 수익률 -0.8%",
+        "sector": "Financials",
+        "ticker": "XLF",
+        "reason": "모멘텀 약화 1.0, 1개월 수익률 -4.2%",
+        "priority": "medium"
+      },
+      {
+        "action": "buy_dip",
+        "sector": "Financials",
+        "ticker": "XLF",
+        "reason": "RSI 23.7 과매도, 3개월 수익률 +1.8% (회복 가능성)",
         "priority": "medium"
       }
     ],
-    "summary": "강세 섹터: Energy, Consumer Staples, Materials | 약세 섹터: Technology, Financials, Consumer Discretionary | Energy, Consumer Staples 섹터로 자금 유입 중"
+    "summary": "강세 섹터: Energy, Materials, Consumer Staples | 약세 섹터: Financials, Healthcare, Communication Services | Energy, Materials 섹터로 자금 유입 중"
   },
-  "timestamp": "2026-01-25T21:20:46.323496"
+  "timestamp": "2026-01-28T21:05:04.229493"
 }

@@ -294,7 +294,7 @@ class SECEdgar:
             truncated_text = full_text[:80000]  # 글자 제한 (약 20k 토큰)
 
             response = self.gemini_client.models.generate_content(
-                model="gemini-2.0-flash-exp",  # 빠르고 저렴한 모델
+                model="gemini-2.0-flash",  # 빠르고 저렴한 모델
                 contents=f"{instruction}\n\n{truncated_text}"
             )
 
