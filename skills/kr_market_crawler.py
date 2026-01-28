@@ -64,6 +64,67 @@ def get_kr_stock_info(ticker: str) -> Dict:
         print(f"KR Crawler Error for {ticker}: {e}")
         return {}
 
+def get_kr_earnings_schedule() -> list:
+    """
+    네이버 금융 '실적 속보' 페이지에서 최근/예정 실적 발표 리스트 크롤링
+    URL: https://finance.naver.com/research/earnings_list.naver
+    """
+    url = "https://finance.naver.com/research/earnings_list.naver"
+    results = []
+    
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        
+        # 메인 테이블 찾기
+        box = soup.find('div', {'class': 'box_type_m'})
+        if not box:
+            return []
+            
+        table = box.find('table', {'class': 'type_1'})
+        if not table:
+            return []
+            
+        rows = table.find_all('tr')
+        
+        # 헤더 건너뛰고 데이터 파싱 (보통 2번째 행부터 데이터)
+        for row in rows:
+            cols = row.find_all('td')
+            if len(cols) < 5: # 구분선이나 빈 행 제외
+                continue
+                
+            # 데이터 추출
+            # 0: 종목명, 1: 실적발표일(링크), 2: 분기, ...
+            try:
+                name = cols[0].text.strip()
+                date = cols[1].text.strip()
+                quarter = cols[2].text.strip()
+                
+                # 링크에서 코드 추출 (optional)
+                link = cols[0].find('a')
+                code = ""
+                if link and 'code=' in link['href']:
+                    code = link['href'].split('code=')[1]
+                
+                results.append({
+                    "name": name,
+                    "code": code,
+                    "date": date,
+                    "quarter": quarter,
+                    "revenue": cols[3].text.strip(), # 매출액
+                    "profit": cols[4].text.strip(), # 영업이익
+                    "net_income": cols[5].text.strip() if len(cols) > 5 else "-"
+                })
+            except Exception as e:
+                continue
+                
+    except Exception as e:
+        print(f"Earnings Crawler Error: {e}")
+        
+    return results
+
 if __name__ == "__main__":
     # Test
     print("Samsung Electronics (005930):", get_kr_stock_info("005930.KS"))
+    print("Earnings Schedule Sample:", get_kr_earnings_schedule()[:3])

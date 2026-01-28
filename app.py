@@ -97,7 +97,7 @@ def clear_analysis_state():
 
 page = st.sidebar.radio(
     "메뉴 선택",
-    options=["🏠 홈 대시보드", "📊 포트폴리오 관리", "🌍 글로벌 시장 정보", "🔍 종목 심층 분석"],
+    options=["🏠 홈 대시보드", "📊 포트폴리오 관리", "🌍 글로벌 시장 정보", "🔍 종목 심층 분석", "🧠 전략 회의실"],
     index=0,
     on_change=clear_analysis_state
 )
@@ -114,6 +114,7 @@ if 'nav_target' in st.session_state:
     if target == "portfolio": page = "📊 포트폴리오 관리"
     elif target == "stock_analysis": page = "🔍 종목 심층 분석"
     elif target == "market": page = "🌍 글로벌 시장 정보"
+    elif target == "strategy": page = "🧠 전략 회의실"
     del st.session_state.nav_target
 
 # Top bar render (Always show unless in Market page)
@@ -154,6 +155,10 @@ elif page == "🌍 글로벌 시장 정보":
 
 elif page == "🔍 종목 심층 분석":
     render_stock_analysis_page()
+
+elif page == "🧠 전략 회의실":
+    from pages.strategy_chat import render_strategy_chat_page
+    render_strategy_chat_page()
 
 else:
     # 📊 포트폴리오 관리
