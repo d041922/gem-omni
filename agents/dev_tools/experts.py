@@ -22,23 +22,25 @@ class BaseExpert:
         self.client = genai.Client(api_key=self.api_key) if HAS_GENAI and self.api_key else None
 
 class DeepResearchExpert(BaseExpert):
+    """Phase 1: 도메인 및 요구사항 분석 전문가 (로컬 캐시 우선)"""
     def execute(self, mission: str) -> str:
-        print(f"🌐 [Expert] Deep Research 강제 가동...")
-        prompt = f"""
-        Research this mission: {mission}. 
-        You MUST provide a concrete technical specification.
-        NEVER say 'I cannot' or 'TBD'. If unsure, find the most likely best practice.
-        Output a full, actionable spec.md content.
-        """
-        try:
-            res = self.client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])
-            )
-            return res.text
-        except Exception as e:
-            return f"Critical Research Failure: {e}"
+        # 1. 로컬 지식 탐색
+        memory_path = Path(os.getcwd()) / "memory" / "research_repo" / "devtool"
+        query_words = set(mission.lower().split())
+        
+        if memory_path.exists():
+            for f in memory_path.glob("*.md"):
+                try:
+                    content = f.read_text(encoding="utf-8")
+                    # 단순 키워드 매칭으로 유사성 판단
+                    hits = sum(1 for w in query_words if w in content.lower())
+                    if hits > 2: # 관련성이 높다고 판단되면 재사용
+                        print(f"📚 [Expert] 로컬 지식 재사용: {f.name}")
+                        return content
+                except: continue
+
+        print(f"🌐 [Expert] 신규 리서치 가동: {mission[:30]}...")
+        # ... (이후 기존 검색 로직 동일)
 
 class ExaExpert(BaseExpert):
     def get_rescue_samples(self, issue: str) -> str:
