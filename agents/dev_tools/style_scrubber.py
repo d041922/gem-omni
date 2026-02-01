@@ -4,8 +4,9 @@ from pathlib import Path
 
 class StyleScrubber:
     """
-    [OMNI-Scrubber] Diamond-Standard Style Enforcer
-    Automatically fixes E701 (One-liners) and E722 (Bare except).
+    [OMNI-Scrubber v1.2]
+    Diamond-Standard Style Enforcer with Self-Awareness.
+    Prevents breaking comments and regex patterns.
     """
     def __init__(self, target_dir="."):
         self.target_dir = Path(target_dir)
@@ -20,31 +21,38 @@ class StyleScrubber:
 
         for line in lines:
             original_line = line
+            
+            # 주석 라인은 건드리지 않음 (가장 중요한 안전 장치)
+            if line.strip().startswith('#'):
+                new_lines.append(line)
+                continue
+
             indent = len(line) - len(line.lstrip())
             spacing = " " * indent
             
-            # 1. Fix Bare except: -> except Exception: (Safe Match)
+            # 1. Fix Bare except: -> except Exception:
             if re.search(r'^\s*except:\s*$', line):
                 line = line.replace('except:', 'except Exception:')
             
-            # 2. Fix except: statement -> except Exception: \n statement
+            # 2. Fix except: statement -> except Exception: 
+            # statement
             elif re.search(r'^\s*except:\s+[^\s]', line):
                 line = line.replace('except:', 'except Exception:\n' + spacing + '    ')
                 modified = True
 
             # 3. Fix if/elif/else cond: statement -> Expand to 2 lines
-            # Using simpler regex to avoid breaking the scrubber itself
+            # re.search 등을 포함한 복잡한 라인은 무시
             one_liner_match = re.search(r'^(\s*(?:if|elif|else|with|for|while).*?:)\s*([^\s].*)$', line)
-            if one_liner_match:
+            if one_liner_match and 're.search' not in line:
                 prefix = one_liner_match.group(1)
                 statement = one_liner_match.group(2).strip()
-                # Skip if it's already a multi-line structure or regex
-                if not (statement.startswith('st.') or 're.search' in line or statement.startswith('components.')):
+                if not (statement.startswith('st.') or statement.startswith('components.')):
                     line = f"{prefix}\n{spacing}    {statement}\n"
                     modified = True
 
             # 4. Fix semicolons (stmt1; stmt2) -> 2 lines
-            if ';' in line and not ('"' in line or "'" in line or 'r\'' in line):
+            # 문자열이나 정규표현식 내의 세미콜론은 무시
+            if ';' in line and not any(q in line for q in ['"', "'", "r'"]):
                 parts = line.split(';')
                 line = f"\n{spacing}    ".join([p.strip() for p in parts]) + "\n"
                 modified = True
@@ -60,7 +68,7 @@ class StyleScrubber:
         return False
 
     def run(self):
-        print(f"🧼 [OMNI-Scrubber] Starting deep cleaning in {self.target_dir.absolute()}...")
+        print(f"🧼 [OMNI-Scrubber] Deep cleaning in {self.target_dir.absolute()}...")
         count = 0
         for root, dirs, files in os.walk(self.target_dir):
             dirs[:] = [d for d in dirs if d not in self.exclude_dirs]
@@ -70,7 +78,7 @@ class StyleScrubber:
                     if self.scrub_file(full_path):
                         print(f"  ✨ Cleaned: {full_path}")
                         count += 1
-        print(f"✅ Scrubbing complete. {count} files polished to Diamond-Standard.")
+        print(f"✅ Scrubbing complete. {count} files polished.")
 
 if __name__ == "__main__":
     scrubber = StyleScrubber()

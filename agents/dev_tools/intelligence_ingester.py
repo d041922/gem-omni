@@ -1,48 +1,95 @@
-import re
+"""
+Intelligence Ingester v9.0: Passive Mode
+Reliant on the Main Agent (Gemini CLI) for intent refinement.
+It simply takes the command and extracts keywords for research.
+"""
+import os
+import sys
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, Any, List
+
+# Path Setup
+current_file = Path(__file__).resolve()
+root_dir = current_file.parents[2]
+if str(root_dir) not in sys.path:
+    sys.path.insert(0, str(root_dir))
+
+from agents.dev_tools.key_loader import load_google_api_key
+
+try:
+    from google import genai
+    from google.genai import types
+    HAS_GENAI = True
+except ImportError:
+    HAS_GENAI = False
 
 class IntelligenceIngester:
-    """
-    [OMNI-Ingester v3.0]
-    리포트에서 단순 키워드가 아닌 '전략적 차이(Gap)'와 '구현 규격'을 추출합니다.
-    """
     def __init__(self):
-        self.output_dir = Path("memory/research_repo")
+        self.root_dir = root_dir
+        self.api_key = load_google_api_key()
+        self.client = genai.Client(api_key=self.api_key) if HAS_GENAI and self.api_key else None
 
-    def digest_report(self, report_path: str) -> Dict:
-        if not Path(report_path).exists():
-            return {"error": "Report not found"}
-
-        with open(report_path, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        # 1. 수정 파일 추출
-        file_patterns = re.findall(r'[`\[]([a-zA-Z0-9_\-/]+\.py)[`\]]', content)
+    def analyze_intent(self, mission: str) -> Dict[str, Any]:
+        """
+        [Passive Analysis]
+        Assumes 'mission' is already refined by the Main Agent (Gemini CLI).
+        Just generates keywords for the Researcher.
+        """
+        refined_mission = mission
         
-        # 2. 핵심 기술 및 권장 사항 (Best Practices) 추출
-        # 리포트 내의 'Key Findings' 또는 'Insights' 섹션 탐색
-        best_practices = []
-        bp_match = re.findall(r'[*\-]\s*\*\*([^*]+)\*\*:\s*([^\n]+)', content)
-        for title, desc in bp_match:
-            best_practices.append({"feature": title.strip(), "description": desc.strip()})
-
-        # 3. 코드 패턴 추출
-        code_blocks = re.findall(r'```python\n(.*?)\n```', content, re.DOTALL)
+        # Simple Keyword Extraction using LLM (for better search results)
+        # If LLM fails, just use the mission string.
+        keywords = [mission]
+        
+        if self.client:
+            prompt = f"""
+            Extract 3 technical search keywords from this command.
+            Command: "{mission}"
+            Return JSON: {{ "keywords": ["kw1", "kw2", "kw3"] }}
+            """
+            try:
+                res = self.client.models.generate_content(
+                    model="gemini-2.0-flash-exp",
+                    contents=prompt,
+                    config=types.GenerateContentConfig(response_mime_type="application/json")
+                )
+                data = json.loads(res.text)
+                keywords = data.get("keywords", [mission])
+            except:
+                pass
 
         return {
-            "suggested_files": list(set(file_patterns)),
-            "best_practices": best_practices[:5], # 주요 5개만
-            "patterns_found": len(code_blocks),
-            "raw_summary": content[:1000] # 분석용 원본 요약
+            "keywords": keywords,
+            "refined_mission": refined_mission,
+            "clarification_needed": False, # Always trust the Main Agent
+            "question": None
         }
 
-    def save_action_plan(self, digested_data: Dict):
-        plan_path = self.output_dir / "action_plan.json"
-        with open(plan_path, "w", encoding="utf-8") as f:
-            json.dump(digested_data, f, indent=4, ensure_ascii=False)
-        return plan_path
+    def digest_report(self, report_path: str, current_mission: str) -> Dict:
+        path = Path(report_path)
+        if not path.exists():
+            return {}
+        content = path.read_text(encoding="utf-8")
+        
+        if self.client:
+            prompt = f"""
+            Summarize report for: "{current_mission}"
+            Report: {content[:10000]}...
+            Return JSON: {{ "research_summary_ko": "...", "best_practices": [{{ "feature": "...", "description": "..." }}], "metrics": ["..."] }}
+            """
+            try:
+                response = self.client.models.generate_content(
+                    model="gemini-2.0-flash-exp",
+                    contents=prompt,
+                    config=types.GenerateContentConfig(response_mime_type="application/json")
+                )
+                return json.loads(response.text)
+            except:
+                pass
 
-if __name__ == "__main__":
-    print("✨ Intelligence Ingester v3.0: Deep Analysis Mode Active.")
+        return {
+            "research_summary_ko": "Raw Content",
+            "best_practices": [{"feature": "Manual Review", "description": "Check report."}],
+            "metrics": ["N/A"]
+        }

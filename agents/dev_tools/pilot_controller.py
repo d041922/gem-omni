@@ -1,101 +1,105 @@
+"""
+Pilot Controller v4.0: Reasoning First
+[SOP v3.0] Enforces Chain-of-Thought (CoT) before coding.
+"""
 import os
 import sys
-import subprocess
+import re
 from pathlib import Path
+from typing import Dict, List, Tuple
+from datetime import datetime
+
+current_file = Path(__file__).resolve()
+root_dir = current_file.parents[2]
+if str(root_dir) not in sys.path:
+    sys.path.insert(0, str(root_dir))
+
+from agents.dev_tools.key_loader import load_google_api_key
+from agents.dev_tools.verification_logic import OMNIVerifier
+
+try:
+    from google import genai
+    from google.genai import types
+    HAS_GENAI = True
+except ImportError:
+    HAS_GENAI = False
 
 class DevPilot:
-    """
-    Universal Integrity & Quality Guard (Portable)
-    Ensures 'Integrity First' and 'Ruff Clean' standards.
-    """
     def __init__(self):
-        self.root_dir = Path(os.getcwd())
-        # 현재 실행 중인 파이썬 인터프리터를 기본으로 사용 (범용성 확보)
-        self.python_exe = sys.executable
-        self.venv_path = Path(self.python_exe).parent
-
-    def run_static_analysis(self):
-        """Ruff를 통한 완벽한 문법/스타일 검수 (Zero-Tolerance)"""
-        print("🔍 Running Diamond-Standard Static Analysis...")
-        
-        # 1. ruff 실행 파일 경로 탐색
-        ruff_candidates = [
-            self.venv_path / "ruff.exe",
-            self.venv_path / "ruff",
-            Path(sys.executable).parent / "Scripts" / "ruff.exe",
-            "ruff"
-        ]
-        
-        ruff_exe = "ruff" # Default
-        for cand in ruff_candidates:
-            if isinstance(cand, Path) and cand.exists():
-                ruff_exe = str(cand)
-                break
-
-        exclude_dirs = ["venv", "docs", "archive", "tests", "tmp", ".git", "__pycache__"]
-        
-        try:
-            cmd = [ruff_exe, "check", ".", "--exclude", ",".join(exclude_dirs)]
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
-            
-            if result.returncode != 0:
-                print("❌ Quality Violation Found (Style/Syntax):")
-                print(result.stdout if result.stdout else result.stderr)
-                return False
-            print("✅ Quality Verified: 100% Clean.")
-            return True
-        except FileNotFoundError:
-            print("⚠️ Ruff not found. Static analysis skipped. (Please install: pip install ruff)")
-            return True
-        except Exception as e:
-            print(f"⚠️ Analysis Error: {e}")
-            return True
-
-    def run_integrity_check(self):
-        """모듈 연결성 및 런타임 무결성 검수"""
-        print("🔗 Testing Module Integrity (Integrity First)...")
-        # 해당 프로젝트의 핵심 진입점 자동 탐색 (예: app.py, main.py 등)
-        entry_points = ["app.py", "main.py", "run.py"]
-        found_entry = [f for f in entry_points if (self.root_dir / f).exists()]
-        
-        issues = []
-        
-        for entry in found_entry:
-            try:
-                result = subprocess.run(
-                    [str(self.python_exe), "-c", f"import {entry.replace('.py', '')}"],
-                    capture_output=True, text=True, encoding='utf-8', errors='ignore'
-                )
-                if result.returncode != 0:
-                    issues.append(f"❌ {entry}: {result.stderr.strip().splitlines()[-1]}")
-            except Exception as e:
-                issues.append(f"⚠️ {entry}: Test failed ({e})")
-        
-        if issues:
-            for iss in issues:
-                print(iss)
-            return False
-        print("✅ Integrity Verified: Systems Active.")
-        return True
-
-    def run_full_audit(self):
-        """통합 검수 파이프라인"""
-        print("\n" + "="*50)
-        print("🚀 [OMNI-DevPilot] System Health Check")
-        print("="*50)
-        
-        s1 = self.run_static_analysis()
-        s2 = self.run_integrity_check()
-        
-        print("\n" + "="*50)
-        if s1 and s2:
-            print("✨ [SYSTEM HEALTHY] Ready for Master.")
-            return True
+        self.root_dir = root_dir
+        self.verifier = OMNIVerifier()
+        self.api_key = load_google_api_key()
+        if HAS_GENAI and self.api_key:
+            self.client = genai.Client(api_key=self.api_key)
         else:
-            print("⚠️ [SYSTEM UNHEALTHY] Action Required.")
-            return False
+            self.client = None
 
-if __name__ == "__main__":
-    pilot = DevPilot()
-    if len(sys.argv) > 1 and sys.argv[1] == "audit":
-        pilot.run_full_audit()
+    def _generate_code(self, task: str, context: str, error_log: str = None, feedback: str = None) -> Tuple[str, str]:
+        """
+        Returns: (Reasoning (str), Code (str))
+        """
+        if not self.client:
+            return "No AI", "# AI Offline"
+
+        system_instruction = (
+            "You are an Expert Python Developer. "
+            "STRICT RULE 1: You must explain your logic in Korean FIRST, then write the code. "
+            "STRICT RULE 2: Never use plain 'pip'. Always use 'sys.executable + \" -m pip\"' for subprocesses to ensure OS compatibility."
+        )
+        
+        prompt = f"Mission: {task}\n\nContext:\n{context}"
+        if feedback:
+            prompt += f"\n\n[CRITICAL FEEDBACK]\n{feedback}\n\nFix the issues mentioned above."
+
+        try:
+            response = self.client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.1
+                )
+            )
+            text = response.text
+            
+            # Split reasoning and code
+            reasoning = "설명 없음"
+            code = text
+            if "```python" in text:
+                parts = text.split("```python")
+                reasoning = parts[0].strip()
+                code = parts[1].split("```")[0].strip()
+            
+            return reasoning, code
+        except Exception as e:
+            return str(e), f"# Failed: {e}"
+
+    def execute_plan(self, track_id: str, feedback: str = None) -> str:
+        """Returns the reasoning for logging."""
+        track_dir = self.root_dir / "conductor" / "tracks" / track_id
+        plan_path = track_dir / "plan.md"
+        spec_path = track_dir / "spec.md"
+        
+        plan_content = plan_path.read_text(encoding="utf-8")
+        spec_content = spec_path.read_text(encoding="utf-8")
+        
+        target_file_match = re.search(r"([a-zA-Z0-9_/]+\.py)", spec_content + plan_content)
+        target_path = Path(target_file_match.group(1)) if target_file_match else track_dir / "result_script.py"
+        if not target_path.is_absolute(): target_path = self.root_dir / target_path
+
+        print(f"🔨 [Pilot] 구현/수정 중: {target_path.name}")
+        
+        context = f"Spec: {spec_content}\nPlan: {plan_content}"
+        reasoning, code = self._generate_code(f"Implement {target_path.name}", context, feedback=feedback)
+        
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(code, encoding="utf-8")
+        
+        # Internal self-correction loop
+        for attempt in range(2):
+            run_ok, run_msg = self.verifier.run_script(str(target_path))
+            if run_ok: break
+            _, code = self._generate_code("Fix Error", context, error_log=run_msg)
+            target_path.write_text(code, encoding="utf-8")
+            
+        return reasoning
