@@ -50,7 +50,7 @@ class CachedDataLoaderTool(BaseTool):
                     "row_count": len(df),
                     "message": f"Successfully loaded {len(df)} records from {file_path}"
                 }
-            except:
+            except Exception:
                 # Try loading as analysis result
                 result = load_analysis_result(file_path)
                 return {

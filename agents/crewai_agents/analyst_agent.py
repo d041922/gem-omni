@@ -13,6 +13,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from agents.tools.portfolio_tools import PortfolioMetricsCalculatorTool
 from agents.tools.file_loader_tool import CachedDataLoaderTool
 from agents.tools.validation_tool import PortfolioValidationTool
+from agents.tools.unified_tools import MarketDataTool, MarketIndicesTool
+from agents.tools.search_tool import TavilySearchTool
 from pathlib import Path
 
 
@@ -43,7 +45,12 @@ You are meticulous with numbers and always back your conclusions with data."""
         goal="Calculate accurate portfolio metrics and provide insightful performance analysis",
         backstory=backstory,
         tools=[
-            # Analysis Tools
+            CachedDataLoaderTool(),
+            MarketDataTool(),
+            MarketIndicesTool(),
+            TavilySearchTool(),
+            PortfolioMetricsCalculatorTool(),
+            PortfolioValidationTool()
         ],
         llm=gemini_llm,
         verbose=False,

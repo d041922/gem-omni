@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 
 from agents.tools.ai_strategy_tools import GeminiStrategyTool
 from agents.tools.file_loader_tool import CachedDataLoaderTool
+from agents.tools.search_tool import TavilySearchTool
 from pathlib import Path
 
 
@@ -40,7 +41,8 @@ def create_strategy_agent() -> Agent:
         backstory=backstory,
         tools=[
             GeminiStrategyTool(),
-            CachedDataLoaderTool()
+            CachedDataLoaderTool(),
+            TavilySearchTool()
         ],
         llm=gemini_llm,
         verbose=False,

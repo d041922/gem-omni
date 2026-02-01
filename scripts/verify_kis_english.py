@@ -1,5 +1,4 @@
 from skills.kis_tools import KISConnector
-import sys
 
 def test():
     try:
@@ -26,7 +25,7 @@ def test():
             print(f"   - {h['ticker']} : {h['amount']} shares")
             
     except Exception as e:
-        print(f"\n[X] RESULT: FAILED ❌")
+        print("\n[X] RESULT: FAILED ❌")
         print(f"   - Error: {str(e)}")
 
 if __name__ == "__main__":

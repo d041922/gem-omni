@@ -2,7 +2,6 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import yfinance as yf
-import pandas as pd
 from datetime import datetime
 
 def generate_stock_chart(ticker: str, period: str = "6mo", save_dir: str = "charts") -> str:

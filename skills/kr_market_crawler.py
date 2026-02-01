@@ -4,8 +4,7 @@ yfinance에서 누락되는 국내 주식의 핵심 재무 지표(PER, PBR, ROE)
 """
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
-from typing import Dict, Optional
+from typing import Dict
 
 def get_kr_stock_info(ticker: str) -> Dict:
     """
@@ -50,13 +49,15 @@ def get_kr_stock_info(ticker: str) -> Dict:
                     if th and 'ROE' in th.text:
                         # 최근 연간 실적 (보통 4번째-6번째 td)
                         tds = row.find_all('td')
-                        for td in reversed(tds): # 가장 최근 값부터
+                        for td in reversed(tds):
+                            # 가장 최근 값부터
                             val = td.text.strip().replace(',', '')
                             if val and val != '-':
                                 try:
                                     metrics['roe'] = float(val)
                                     break
-                                except: continue
+                                except Exception:
+                                     continue
         
         return metrics
 
@@ -91,7 +92,8 @@ def get_kr_earnings_schedule() -> list:
         # 헤더 건너뛰고 데이터 파싱 (보통 2번째 행부터 데이터)
         for row in rows:
             cols = row.find_all('td')
-            if len(cols) < 5: # 구분선이나 빈 행 제외
+            if len(cols) < 5:
+                # 구분선이나 빈 행 제외
                 continue
                 
             # 데이터 추출
@@ -116,7 +118,7 @@ def get_kr_earnings_schedule() -> list:
                     "profit": cols[4].text.strip(), # 영업이익
                     "net_income": cols[5].text.strip() if len(cols) > 5 else "-"
                 })
-            except Exception as e:
+            except Exception:
                 continue
                 
     except Exception as e:

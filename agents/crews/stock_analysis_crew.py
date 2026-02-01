@@ -1,6 +1,6 @@
 """
-Stock Analysis Crew
-Multi-agent collaboration system for comprehensive stock analysis
+Stock Analysis Crew (High-Intelligence Mode)
+Multi-agent system with Deep Domain Knowledge & Portfolio Awareness.
 """
 from crewai import Crew, Task, LLM, Process
 from agents.crewai_agents.stock_agents import (
@@ -11,18 +11,18 @@ from agents.crewai_agents.stock_agents import (
     create_moderator
 )
 from typing import Dict, Any
-import json
 import os
 
-# Configure Gemini LLM
+# Configure Gemini LLM (High Temp for Creativity, Low for Precision)
 gemini_llm = LLM(
     model="gemini/gemini-2.0-flash",
-    api_key=os.getenv("GOOGLE_API_KEY")
+    api_key=os.getenv("GOOGLE_API_KEY"),
+    temperature=0.4
 )
 
-
 def create_agents():
-    """Create all 5 agents for stock analysis"""
+    # Re-define agents with stronger personas here if needed, 
+    # but for now we rely on the imported functions and upgrade their TASKS.
     return {
         'fundamental': create_fundamental_analyst(),
         'sentiment': create_sentiment_analyst(),
@@ -31,7 +31,6 @@ def create_agents():
         'moderator': create_moderator()
     }
 
-
 def run_stock_analysis(
     ticker: str,
     analysis_data: Dict[str, Any],
@@ -39,307 +38,191 @@ def run_stock_analysis(
     portfolio_data: Dict[str, Any] = None
 ) -> str:
     """
-    Run multi-agent stock analysis with debate mechanism
-
-    Args:
-        ticker: Stock ticker symbol
-        analysis_data: Summary data from analyze_stock()
-        data_file_path: Path to full data JSON file
-        portfolio_data: Current portfolio holdings for risk analysis (optional)
-
-    Returns:
-        Final investment opinion as markdown text
+    Run multi-agent debate analysis with Enhanced Context.
     """
-    # Create agents
     agents = create_agents()
-
-    # Extract data for agents
+    
+    # Extract Data
     tech = analysis_data.get("technical_indicators", {})
     fund = analysis_data.get("fundamentals", {})
     news = analysis_data.get("news_sentiment", {})
-
-    # Load user investment profile
-    user_profile_path = os.path.join(os.path.dirname(__file__), '..', '..', 'USER_PROFILE.md')
-    user_profile_context = ""
-    try:
-        with open(user_profile_path, 'r', encoding='utf-8') as f:
-            user_profile_context = f.read()
-    except Exception:
-        user_profile_context = """
-## 투자 전략 (기본값)
-- Core 50-60%: S&P 500, NASDAQ 100, 배당 성장주
-- Satellite 40-50%: AI/반도체 25%, 바이오 10%, 한국 성장주 10%
-- 단일 종목 최대 15%, 섹터 최대 40%
-- ADX 25 이상 진입, PSAR 손절
-"""
-
-    # Shared context for all agents
-    shared_context = f"""
-# 종목 분석 데이터
-
-## 기본 정보
-- 종목: {ticker} ({analysis_data.get('name', ticker)})
-- 현재가: ${analysis_data.get('current_price', 0):.2f}
-- 52주 범위: ${analysis_data.get('52week_low', 0):.2f} - ${analysis_data.get('52week_high', 0):.2f}
-- 현재 위치: {analysis_data.get('position_52w_pct', 0):.1f}%
-
-## 기술적 지표
-- RSI: {tech.get('rsi', 0):.1f}
-- MACD: {tech.get('macd', 0):.2f}
-- **ADX: {tech.get('adx', 0):.1f}** (추세 강도 - 25 이상 진입 기준)
-- MFI: {tech.get('mfi', 0):.1f} (자금 흐름)
-- MA20: ${tech.get('ma20', 0):.2f}, MA60: ${tech.get('ma60', 0):.2f}
-- **파라볼릭 SAR: ${tech.get('psar', 0):.2f}** (손절 기준)
-- ATR: {tech.get('atr', 0):.2f} (변동성 - 포지션 사이징)
-
-## 펀더멘털
-- 섹터: {fund.get('sector', 'N/A')}
-- PER: {fund.get('pe_ratio', 0):.1f}, PBR: {fund.get('price_to_book', 0):.2f}
-- ROE: {fund.get('roe', 0):.1f}%, 영업이익률: {fund.get('operating_margin', 0):.1f}%
-- 부채비율: {fund.get('debt_to_equity', 0):.1f}, 유동비율: {fund.get('current_ratio', 0):.2f}
-- EPS 성장률: {fund.get('eps_growth', 0):+.1f}%
-
-## 뉴스 심리
-- 뉴스 개수: {news.get('news_count', 0)}개
-- 감성: 긍정 {news.get('positive', 0):.0f}% / 중립 {news.get('neutral', 0):.0f}% / 부정 {news.get('negative', 0):.0f}%
-- 종합: {news.get('overall', '중립')}
-- 요약: {news.get('summary', '')}
-
-## 상세 데이터 파일
-{data_file_path}
-
----
-
-# 📋 사용자 투자 프로필 (반드시 준수)
-
-{user_profile_context}
-"""
-
-    # Add portfolio context for Risk Control Agent (unified utility)
+    
+    # --- 1. Portfolio Context (Crucial) ---
     try:
         from skills.portfolio_utils import get_portfolio_context_for_ai
-        portfolio_context = get_portfolio_context_for_ai(ticker)
-    except Exception as e:
-        print(f"Warning: Could not load portfolio context: {e}")
-        portfolio_context = "\n## 📊 현재 포트폴리오 정보\n- 포트폴리오 데이터 로드 실패\n"
+        port_ctx = get_portfolio_context_for_ai(ticker)
+    except Exception:
+        port_ctx = "포트폴리오 데이터 로드 실패. 일반적인 주가 분석을 수행합니다."
 
-    shared_context += portfolio_context
+    # --- 2. Data Contexts (Structured for Logic) ---
+    common_data = f"""
+[Target Asset]
+- Ticker: {ticker}
+- Current Price: ${analysis_data.get('current_price', 0):.2f}
+- Market Cap: ${fund.get('market_cap', 0)/1e9:.1f}B (Large Cap > 10B, Small Cap < 2B)
+"""
 
-    # Task 1: Fundamental Analysis
-    task_fundamental = Task(
-        description=f"""
-{shared_context}
+    fund_context = f"""
+[Fundamental Reality]
+- Valuation: PER {fund.get('pe_ratio', 0):.1f} (Sector Avg approx 20-30)
+- Growth Power: Revenue Growth {fund.get('revenue_growth', 0):.1f}% | PEG {fund.get('peg_ratio', 0):.2f} (PEG < 1 is Undervalued Growth)
+- Profit Quality: ROE {fund.get('roe', 0):.1f}% (Outstanding if > 20%)
+- Financial Safety: Debt/Equity {fund.get('debt_to_equity', 0):.2f}% (**{fund.get('debt_status', 'N/A')}**)
+  > Note: Debt < 100% is safe. Don't panic unless > 200%.
+"""
 
-당신의 역할: 펀더멘털 애널리스트
+    tech_context = f"""
+[Technical Battlefield]
+- Trend (ADX 14): {tech.get('adx', 0):.1f} (If < 20: Range, > 25: Trend)
+- Momentum (RSI 14): {tech.get('rsi', 0):.1f} (Overbought > 70, Oversold < 30)
+- Smart Money (MFI 14): {tech.get('mfi', 0):.1f}
+- Structure: Price vs MA200 is {'Bullish' if analysis_data.get('current_price', 0) > tech.get('ma200', 0) else 'Bearish'}
+- Risk Line: PSAR ${tech.get('psar', 0):.2f}
+"""
 
-임무:
-1. **Core/Satellite 분류**: {ticker}가 Core 자산(안정적 성장)인지 Satellite 자산(공격적 성장)인지 판단하세요
-   - Core 기준: S&P 500, NASDAQ 100 ETF, 대형 배당 성장주 (MSFT, AAPL, JNJ 등)
-   - Satellite 기준: AI/반도체, 바이오, 한국 성장주 등 고성장 섹터
-2. ROE {fund.get('roe', 0):.1f}%, 영업이익률 {fund.get('operating_margin', 0):.1f}%를 평가하세요
-3. 부채비율 {fund.get('debt_to_equity', 0):.1f}, 유동비율 {fund.get('current_ratio', 0):.2f}의 안전성을 판단하세요
-4. EPS 성장률 {fund.get('eps_growth', 0):+.1f}%의 지속 가능성을 분석하세요
-5. PER {fund.get('pe_ratio', 0):.1f}의 적정성을 평가하세요
-6. 목표가와 매수/보유/매도 의견을 제시하세요
+    news_context = f"""
+[Market Sentiment]
+- Mood: {news.get('overall', 'Neutral')}
+- Key Narrative: {news.get('summary', 'No specific news')}
+"""
 
-출력 형식:
-## 펀더멘털 분석 의견
-- **자산 분류**: [Core/Satellite]
-- 등급: [매수/보유/매도]
-- 목표가: $XXX (근거 포함)
-- 핵심 논거: (3가지)
-""",
-        agent=agents['fundamental'],
-        expected_output="펀더멘털 분석 의견 (Core/Satellite 분류, 등급, 목표가, 근거)"
+    # --- 3. Prompt Definitions (Expert Level) ---
+    
+    prompt_fund = f"""
+{common_data}
+{fund_context}
+
+당신은 월가 20년 경력의 **Fundamental Fund Manager**입니다.
+단순히 숫자를 읽지 말고, **"이 회사의 비즈니스 퀄리티와 가격의 괴리"**를 찾아내십시오.
+
+**Thinking Process:**
+1. **이익의 질**: ROE가 {fund.get('roe', 0):.1f}%라는 것은 이 회사가 자본을 얼마나 효율적으로 굴리는지 보여줍니다. 경쟁사 대비 우월한가요?
+2. **성장 정당성**: PER가 높다면, PEG 비율({fund.get('peg_ratio', 0):.2f})을 볼 때 그만한 고성장이 정당화됩니까?
+3. **재무 리스크 팩트체크**: 부채비율 평가('{fund.get('debt_status', 'N/A')}')를 신뢰하고, 정말로 돈이 말라서 망할 회사인지 아닌지 판단하십시오.
+
+**Output:**
+- **기업 등급**: [S/A/B/C/F] (비즈니스 모델과 실적 기준)
+- **밸류에이션**: [저평가/적정/버블] (근거: PEG, PER)
+- **매수 근거**: (숫자로 증명된 가장 매력적인 포인트 1가지)
+"""
+
+    prompt_tech = f"""
+{common_data}
+{tech_context}
+
+당신은 차트의 신(God of Charts)이라 불리는 **Technical Trader**입니다.
+펀더멘털은 무시하고, 오직 **"가격의 흐름과 심리"**만 꿰뚫어 보십시오.
+
+**Thinking Process:**
+1. **추세의 진실**: ADX가 {tech.get('adx', 0):.1f}입니다. 지금이 추세장입니까, 아니면 지루한 박스권입니까? 추세에 역행하지 마십시오.
+2. **과열/침체**: RSI가 {tech.get('rsi', 0):.1f}입니다. 지금 사는 건 떨어지는 칼날을 잡는 겁니까, 아니면 달리는 말에 올라타는 겁니까?
+3. **손익비 계산**: 지금 진입하면 먹을 구간(Upside)과 잃을 구간(Downside)의 비율이 2:1 이상 나옵니까?
+
+**Output:**
+- **추세 판단**: [상승장/하락장/횡보장] (근거: ADX, MA)
+- **타이밍**: [지금 당장 매수/눌림목 대기/매도]
+- **전술**: 진입가 $XXX | 손절가 $XXX
+"""
+
+    prompt_sent = f"""
+{common_data}
+{news_context}
+
+당신은 시장의 **Behavioral Economist(행동경제학자)**입니다.
+뉴스의 팩트보다 **"시장 참여자들이 뉴스에 어떻게 반응하고 있는지"**를 분석하십시오.
+
+**Thinking Process:**
+1. **선반영 여부**: 호재가 떴는데 주가가 안 오릅니까? (Sell on news 가능성)
+2. **공포 지수**: 지금 사람들이 이 종목을 무서워합니까, 아니면 환장하고 달려듭니까? 남들과 반대로 갈 용기가 필요합니다.
+
+**Output:**
+- **군중 심리**: [공포/중립/탐욕]
+- **대응 전략**: (군중과 같이 갈 것인가, 역발상으로 갈 것인가)
+"""
+
+    prompt_risk = f"""
+당신은 냉철한 **Risk Officer(CRO)**입니다.
+당신의 임무는 돈을 버는 게 아니라, **"마스터의 계좌를 파산으로부터 지키는 것"**입니다.
+
+**[마스터의 포트폴리오 (현실)]**
+{port_ctx}
+
+**Thinking Process:**
+1. **포트폴리오 맥락**: 마스터가 이미 이 종목을 많이 가지고 있다면, 아무리 좋아도 "비중 축소"를 외쳐야 합니다. (집중투자 리스크)
+2. **손실 한도**: 마스터가 이 종목을 샀다가 -20%가 나면 계좌 전체에 어떤 타격이 옵니까?
+3. **팩트 검증**: 앞선 펀더멘털 분석가가 부채비율 같은 걸 잘못 해석했다면 즉시 바로잡으십시오.
+
+**Output:**
+- **보유자 조언**: (이미 가진 사람에게: 홀딩/물타기/손절)
+- **신규 조언**: (없는 사람에게: 진입금지/분할매수)
+- **최대 경고**: (이것만은 조심해라)
+"""
+
+    prompt_decision = f"""
+당신은 **투자 위원회 의장(Chairman)**입니다.
+앞선 4명의 전문가들이 떠든 내용을 종합하여, **마스터에게 "돈이 되는 결론"**을 내려주십시오.
+
+**[의사결정 알고리즘]**
+1. **보유 여부 최우선**: {port_ctx}를 보고, 보유자에게는 '관리 전략'을, 미보유자에게는 '진입 전략'을 분리해서 말하십시오. (섞어서 말하지 마세요)
+2. **조건부 결론**: "상황 봐서요" 같은 말 금지. **"가격이 $XXX를 뚫으면 산다"**라고 명확한 트리거(Trigger)를 주십시오.
+3. **팩트 중심**: 감정적인 형용사 대신, PER, RSI, 평단가 등 **'숫자'**로 설득하십시오.
+
+**최종 리포트 포맷 (Markdown):**
+
+# 🏛️ 투자 위원회 최종 결결: [매수/보유/매도]
+> "(결론을 한 문장으로 요약 - 예: 성장성은 좋으나 기술적 과열이므로 조정 시 매수)"
+
+---
+
+## 💼 내 포트폴리오 맞춤 전략
+**(이 섹션이 핵심입니다. {port_ctx} 내용을 바탕으로 작성하세요)**
+- **나의 상황**: (예: 현재 100주 보유 중, 수익률 -5%)
+- **행동 지침**: **[물타기 / 존버 / 익절 / 손절]**
+- **이유**: (평단가와 현재 주가 위치를 고려한 논리)
+
+---
+
+## 📉 트레이딩 시나리오 (가격 기준)
+- **1차 진입가**: **$XXX** (이 가격 안 오면 사지 마세요)
+- **목표가**: **$XXX** (적정 가치)
+- **손절가**: **$XXX** (생명선)
+
+---
+
+## 📊 위원회 주요 논의 요약
+- **👍 Bullish (찬성)**: (펀더멘털, 기술적 호재)
+- **👎 Bearish (반대)**: (리스크 관리자의 경고)
+"""
+
+    # --- Tasks Definition ---
+    task_fund = Task(description=prompt_fund, agent=agents['fundamental'], expected_output="펀더멘털 전문 보고서")
+    task_tech = Task(description=prompt_tech, agent=agents['valuation'], expected_output="기술적 매매 전략 보고서")
+    task_sent = Task(description=prompt_sent, agent=agents['sentiment'], expected_output="시장 심리 보고서")
+    
+    task_risk = Task(
+        description=prompt_risk, 
+        agent=agents['risk_control'], 
+        expected_output="포트폴리오 리스크 관리 보고서",
+        context=[task_fund, task_tech, task_sent]
     )
-
-    # Task 2: Sentiment Analysis
-    task_sentiment = Task(
-        description=f"""
-{shared_context}
-
-당신의 역할: 심리 분석가
-
-임무:
-1. 뉴스 감성 (긍정 {news.get('positive', 0):.0f}%, 부정 {news.get('negative', 0):.0f}%)을 해석하세요
-2. 시장 심리가 과열/과냉인지 판단하세요
-3. 군중 심리(FOMO, 공포)에 따른 리스크를 진단하세요
-4. 단기 모멘텀 관점에서 매수/보유/매도 의견을 제시하세요
-
-출력 형식:
-## 심리 분석 의견
-- 등급: [매수/보유/매도]
-- 시장 심리: [과열/정상/과냉]
-- 핵심 논거: (3가지)
-""",
-        agent=agents['sentiment'],
-        expected_output="심리 분석 의견 (등급, 시장 심리, 근거)"
-    )
-
-    # Task 3: Technical & Valuation Analysis
-    task_valuation = Task(
-        description=f"""
-{shared_context}
-
-당신의 역할: 밸류에이션 및 기술적 분석가
-
-임무:
-1. **ADX {tech.get('adx', 0):.1f} 추세 강도 평가** (중요!)
-   - ADX < 20: 추세 없음 → 매매 금지 (박스권)
-   - ADX 20-25: 약한 추세 → 진입 대기
-   - ADX > 25: 강한 추세 → 진입 가능
-2. **PSAR ${tech.get('psar', 0):.2f} 기반 손절가 설정** (필수!)
-   - 현재 PSAR이 손절 기준선
-   - 추세 전환 시 즉시 청산 원칙
-3. RSI {tech.get('rsi', 0):.1f}, MFI {tech.get('mfi', 0):.1f}로 과매수/과매도 판단
-4. ATR {tech.get('atr', 0):.2f} 기반 변동성 평가 → 포지션 사이징 제안
-5. 최적 진입가, 익절가 (1차 50%, 2차 추적), 손절가를 제시하세요
-
-**중요**: ADX < 25이면 "진입 대기" 권장
-
-출력 형식:
-## 기술적 분석 의견
-- 등급: [매수/보유/매도/진입대기]
-- **ADX 평가**: [추세 강함/보통/약함/없음]
-- 진입가: $XXX
-- **1차 익절가**: $XXX (50% 청산)
-- **2차 목표가**: $XXX (추적 손절)
-- **손절가 (PSAR)**: ${tech.get('psar', 0):.2f}
-- 핵심 논거: (3가지)
-""",
-        agent=agents['valuation'],
-        expected_output="기술적 분석 의견 (ADX 평가, 등급, 진입/익절/손절가, 근거)"
-    )
-
-    # Task 4: Risk Control Analysis
-    task_risk_control = Task(
-        description=f"""
-{shared_context}
-
-당신의 역할: 리스크 관리 전문가
-
-임무:
-1. **Core/Satellite 균형 체크**
-   - 현재 포트폴리오가 Core 50-60%, Satellite 40-50% 범위를 유지하는지 확인
-   - {ticker}가 Satellite 종목이라면, 현재 Satellite 비중이 50%를 초과하지 않는지 점검
-2. **단일 종목 집중도**: {ticker} 비중이 전체의 15%를 초과하지 않도록 제한
-3. **섹터 집중도**: {fund.get('sector', 'N/A')} 섹터가 40%를 초과하지 않도록 점검
-   - AI/반도체 섹터는 예외적으로 40%까지 허용
-4. **손실 한도**: 이 종목에서 발생 가능한 최대 손실이 전체 포트폴리오의 1-2% 이내인지 확인
-5. 적정 포트폴리오 비중을 제안하세요 (예: "Satellite 내 최대 10%, 전체의 5%")
-
-**중요**:
-- 앞선 분석가들이 "매수" 의견을 냈더라도, 집중도 리스크가 크다면 반드시 경고하세요
-- Satellite > 50% 이면 "Core 비중 부족, 방어력 약화" 경고 필수
-- ADX < 25이면 "추세 약함, 진입 대기 권장" 경고
-
-출력 형식:
-## 리스크 관리 의견
-- 등급: [매수/보유/매도/비중조절/진입대기]
-- **Core/Satellite 균형**: [양호/주의/위험]
-- **적정 비중**: 전체 포트폴리오의 X% (Satellite 내 Y%)
-- **단일 종목 집중도**: [안전/보통/위험]
-- **섹터 집중도**: [안전/보통/위험] ({fund.get('sector', 'N/A')} 섹터)
-- 핵심 논거: (3가지)
-- ⚠️ **경고 사항**: (있다면)
-""",
-        agent=agents['risk_control'],
-        expected_output="리스크 관리 의견 (등급, Core/Satellite 균형, 적정 비중, 집중도 리스크, 경고)"
-    )
-
-    # Task 5: Final Decision (Moderator)
+    
     task_decision = Task(
-        description=f"""
-{shared_context}
-
-당신의 역할: 투자위원회 의장
-
-앞선 4명의 전문가 의견:
-1. 펀더멘털 애널리스트 의견 (Core/Satellite 분류 포함)
-2. 심리 분석가 의견
-3. 기술적 분석가 의견 (ADX, PSAR 평가 포함)
-4. 리스크 관리 전문가 의견 (집중도 체크 포함)
-
-임무:
-1. 4명의 의견을 종합하여 합의를 도출하세요
-2. **ADX < 25이면 "진입 대기" 등급으로 조정하세요** (추세 불충분)
-3. **리스크 관리자의 집중도 경고는 최종 의견에 반드시 반영하세요**
-4. Core/Satellite 분류를 명확히 하고, 적정 비중을 제안하세요
-5. PSAR 기반 손절가를 반드시 포함하세요
-6. 익절 전략은 "1차 50% 익절 → Core 이동, 2차 추적" 구조로 작성하세요
-
-출력 형식 (Markdown 디자인 적용):
-# 📝 {ticker} 심층 투자 리포트
-
-## 1️⃣ 최종 투자 판단
-- **투자 의견**: [매수/보유/매도/진입대기] (Emoji)
-- **자산 성격**: [Core/Satellite]
-- **목표가**: **$XXX** (현재가 대비 +XX%)
-- **손절가 (PSAR)**: **${tech.get('psar', 0):.2f}** 🔴
-- **추세 강도 (ADX)**: {tech.get('adx', 0):.1f} ([강함/보통/약함])
-
----
-
-## 2️⃣ 4인 전문가 종합 토론
-> "전문가들의 의견을 종합한 결과..."
-
-(여기에서 펀더멘털, 기술적, 리스크 관점의 합의 내용을 서술)
-
-**✅ 핵심 강점**:
-- (강점 1)
-- (강점 2)
-
-**⚠️ 주요 리스크**:
-- (리스크 1 - 특히 리스크 관리자 의견 반영)
-- (리스크 2)
-
----
-
-## 3️⃣ 실전 매매 가이드
-### 🚀 진입 전략
-- **진입 가격**: $XXX ~ $XXX
-- **투자 비중**: 포트폴리오의 X% (분할 매수 권장)
-
-### 💰 익절 전략
-1. **1차 목표**: $XXX (50% 청산 후 Core 재투자)
-2. **2차 목표**: $XXX (Trailing Stop 적용)
-
-### 🛡️ 손절 전략
-- PSAR ${tech.get('psar', 0):.2f} 이탈 시 **즉시 전량 청산** (기계적 대응)
-
----
-
-## 4️⃣ 마스터를 위한 조언
-(사용자의 포트폴리오 상황을 고려한 한 문장 코멘트)
-""",
-        agent=agents['moderator'],
-        expected_output="최종 투자 의견서 (Markdown 디자인 적용)",
-        context=[task_fundamental, task_sentiment, task_valuation, task_risk_control]
+        description=prompt_decision, 
+        agent=agents['moderator'], 
+        expected_output="최종 투자 의사결정문",
+        context=[task_fund, task_tech, task_sent, task_risk]
     )
 
-    # Create crew with tasks
+    # --- Run Crew ---
     try:
         crew = Crew(
-            agents=[
-                agents['fundamental'],
-                agents['sentiment'],
-                agents['valuation'],
-                agents['risk_control'],
-                agents['moderator']
-            ],
-            tasks=[
-                task_fundamental,
-                task_sentiment,
-                task_valuation,
-                task_risk_control,
-                task_decision
-            ],
+            agents=list(agents.values()),
+            tasks=[task_fund, task_tech, task_sent, task_risk, task_decision],
             process=Process.sequential,
             verbose=True
         )
-
-        # Execute
-        # Monkeypatch signal to avoid "signal only works in main thread" error
+        
+        # Monkeypatch signal
         import signal
         original_signal = signal.signal
         try:
@@ -349,11 +232,6 @@ def run_stock_analysis(
             signal.signal = original_signal
             
         return str(result)
+        
     except Exception as e:
-        return f"""# 분석 오류
-
-멀티에이전트 분석 중 오류가 발생했습니다.
-
-오류 메시지: {str(e)}
-
-단일 AI 분석을 시도하세요."""
+        return f"# ⚠️ 분석 중 오류 발생\n\n상세 내용: {str(e)}"

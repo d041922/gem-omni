@@ -1,9 +1,23 @@
 # Environment and secrets
 .env
+*.json
+!package.json
+!package-lock.json
+!composer.json
 .streamlit/secrets.toml
+google_accounts.json
+oauth_creds.json
 
-# Memory and data files
-memory/*.json
+# OMNI Intelligence Hub (Only keep core logic, not data)
+memory/
+!memory/.gitkeep
+tmp/
+!tmp/.gitkeep
+
+# Gemini & Tools
+.gemini/
+LIVE_REPORT.md
+LIVE_BRIEFING.md
 
 # Python
 __pycache__/
@@ -17,6 +31,7 @@ __pycache__/
 dist/
 build/
 *.log
+.ruff_cache/
 
 # Virtual environment
 venv/
@@ -26,6 +41,10 @@ ENV/
 # Charts and temporary files
 charts/
 *.tmp
+*.pdf
+*.png
+*.jpg
+*.jpeg
 
 # IDE
 .vscode/
@@ -37,3 +56,6 @@ charts/
 
 # Project specific
 ref/
+archive/
+conductor/tracks/mission-*
+conductor/tracks/auto-*

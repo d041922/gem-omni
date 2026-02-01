@@ -14,7 +14,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from skills.finance_core_lib import calculate_portfolio_metrics
-from agents.tools.data_cache import save_portfolio_data, save_analysis_result
+from agents.tools.data_cache import save_portfolio_data
 
 
 class PortfolioMetricsInput(BaseModel):

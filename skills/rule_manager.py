@@ -1,6 +1,4 @@
 import os
-import requests
-from bs4 import BeautifulSoup
 
 def fetch_and_update_rules(topic: str, target_file: str):
     """
@@ -12,7 +10,6 @@ def fetch_and_update_rules(topic: str, target_file: str):
     # 파일을 쓰는 역할에 집중하거나, 혹은 직접 검색 로직을 가질 수도 있습니다.
     # 현재 구조에서는 에이전트가 '검색 -> 요약 -> 파일작성' 흐름을 타므로,
     # 여기서는 상징적인 헬퍼 함수로 둡니다.
-    pass
 
 def apply_cursor_rules(content: str, rule_name: str):
     """

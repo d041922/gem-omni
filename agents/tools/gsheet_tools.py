@@ -6,7 +6,6 @@ Optimized to reduce token usage by returning summaries instead of full data
 from crewai.tools import BaseTool
 from typing import Type, Any, Dict
 from pydantic import BaseModel, Field
-import pandas as pd
 import sys
 import os
 

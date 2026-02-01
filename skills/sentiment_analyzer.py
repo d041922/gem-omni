@@ -1,168 +1,48 @@
 """
-News Sentiment Analysis Module
-Analyzes news sentiment using yfinance + Gemini API
+Advanced Sentiment & News Intelligence [GEM: OMNI]
+Handles news extraction and Gemini-based translation.
 """
-import yfinance as yf
-from typing import Dict, List, Any, Optional
-from datetime import datetime
 import os
+from typing import Dict, List, Any
+import logging
 from google import genai
 
+logging.getLogger('google_genai').setLevel(logging.ERROR)
 
-def fetch_news_headlines(ticker: str, max_items: int = 10) -> List[Dict[str, str]]:
-    """
-    Fetch recent news headlines from yfinance
-
-    Args:
-        ticker: Stock ticker symbol
-        max_items: Maximum number of news items to fetch
-
-    Returns:
-        List of news items with title, publisher, and link
-    """
+def get_news_sentiment(ticker: str, max_items: int = 5) -> Dict[str, Any]:
+    """Fetch raw news headlines from yfinance (stable path)"""
+    import yfinance as yf
     try:
-        stock = yf.Ticker(ticker.upper())
-        news = stock.news
-
-        if not news:
-            return []
-
-        # Extract relevant fields
+        stock = yf.Ticker(ticker)
+        raw_news = stock.news
         headlines = []
-        for item in news[:max_items]:
+        for item in raw_news[:
+            max_items]:
+            content = item.get("content", item)
+            provider = content.get("provider", {})
             headlines.append({
-                "title": item.get("title", ""),
-                "publisher": item.get("publisher", "Unknown"),
-                "link": item.get("link", ""),
-                "published": datetime.fromtimestamp(
-                    item.get("providerPublishTime", 0)
-                ).strftime("%Y-%m-%d %H:%M")
+                "title": content.get("title", ""),
+                "publisher": provider.get("displayName", content.get("publisher", "Unknown")),
+                "link": content.get("canonicalUrl", {}).get("url", content.get("link", "")),
+                "published": content.get("pubDate", "").replace('T', ' ').replace('Z', '')
             })
+        return {"ticker": ticker, "headlines": headlines}
+    except Exception:
+        return {"ticker": ticker, "headlines": []}
 
-        return headlines
-
-    except Exception as e:
-        print(f"Error fetching news for {ticker}: {e}")
-        return []
-
-
-def analyze_sentiment_with_gemini(headlines: List[Dict[str, str]]) -> Dict[str, Any]:
-    """
-    Analyze sentiment of news headlines using Gemini API
-
-    Args:
-        headlines: List of news items with title and publisher
-
-    Returns:
-        Dictionary with sentiment scores and analysis
-    """
+def translate_headlines(headlines: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """Gemini-powered Korean translation for stock news"""
     if not headlines:
-        return {
-            "positive": 0,
-            "neutral": 100,
-            "negative": 0,
-            "overall": "중립",
-            "confidence": "낮음",
-            "summary": "뉴스 없음"
-        }
-
-    # Prepare headlines text
-    headlines_text = "\n".join([
-        f"{i+1}. [{item['publisher']}] {item['title']}"
-        for i, item in enumerate(headlines)
-    ])
-
-    # Sentiment analysis prompt
-    prompt = f"""다음 뉴스 헤드라인들을 분석하여 전체적인 시장 심리를 평가하세요.
-
-뉴스 헤드라인:
-{headlines_text}
-
-분석 요구사항:
-1. 각 헤드라인의 감성 (긍정/중립/부정) 판단
-2. 전체 긍정/중립/부정 비율 계산
-3. 종합 평가 (긍정적/중립적/부정적)
-4. 신뢰도 (높음/보통/낮음)
-5. 한 줄 요약
-
-출력 형식 (JSON):
-{{
-    "positive": 숫자 (0-100),
-    "neutral": 숫자 (0-100),
-    "negative": 숫자 (0-100),
-    "overall": "긍정적" 또는 "중립적" 또는 "부정적",
-    "confidence": "높음" 또는 "보통" 또는 "낮음",
-    "summary": "한 줄 요약 (30자 이내)"
-}}
-
-JSON만 출력하세요. 다른 설명은 불필요합니다."""
-
+        return []
     try:
         client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt
-        )
-
-        # Parse JSON response
-        import json
-        result_text = response.text.strip()
-
-        # Remove markdown code blocks if present
-        if result_text.startswith("```"):
-            result_text = result_text.split("```")[1]
-            if result_text.startswith("json"):
-                result_text = result_text[4:]
-
-        result = json.loads(result_text)
-
-        # Validate and normalize
-        result["positive"] = min(100, max(0, result.get("positive", 0)))
-        result["neutral"] = min(100, max(0, result.get("neutral", 0)))
-        result["negative"] = min(100, max(0, result.get("negative", 0)))
-
-        # Normalize to sum 100
-        total = result["positive"] + result["neutral"] + result["negative"]
-        if total > 0:
-            result["positive"] = round(result["positive"] / total * 100, 1)
-            result["neutral"] = round(result["neutral"] / total * 100, 1)
-            result["negative"] = round(result["negative"] / total * 100, 1)
-
-        return result
-
-    except Exception as e:
-        print(f"Error analyzing sentiment with Gemini: {e}")
-        return {
-            "positive": 33,
-            "neutral": 34,
-            "negative": 33,
-            "overall": "중립",
-            "confidence": "낮음",
-            "summary": "분석 실패"
-        }
-
-
-def get_news_sentiment(ticker: str, max_items: int = 10) -> Dict[str, Any]:
-    """
-    Complete news sentiment analysis for a stock
-
-    Args:
-        ticker: Stock ticker symbol
-        max_items: Maximum number of news items to analyze
-
-    Returns:
-        Dictionary with news headlines and sentiment analysis
-    """
-    # 1. Fetch news headlines
-    headlines = fetch_news_headlines(ticker, max_items)
-
-    # 2. Analyze sentiment
-    sentiment = analyze_sentiment_with_gemini(headlines)
-
-    # 3. Return combined result
-    return {
-        "ticker": ticker.upper(),
-        "news_count": len(headlines),
-        "headlines": headlines[:5],  # Return top 5 for display
-        "sentiment": sentiment
-    }
+        text = "\n".join([f"{i}. {h['title']}" for i, h in enumerate(headlines)])
+        prompt = f"Translate these stock news titles into natural Korean. Return only the list of translated titles:\n\n{text}"
+        res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        lines = [line.split('. ', 1)[-1].strip() for line in res.text.strip().split('\n') if line.strip()]
+        for i, h in enumerate(headlines):
+            h['title_ko'] = lines[i] if i < len(lines) else h['title']
+    except Exception:
+        for h in headlines:
+            h['title_ko'] = h['title']
+    return headlines

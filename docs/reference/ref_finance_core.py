@@ -18,7 +18,6 @@ from io import BytesIO
 from googleapiclient.http import MediaIoBaseDownload
 import tempfile # <-- 이 라인을 추가
 import os       # <-- 이 라인을 추가
-from PyPDF2 import PdfReader
 from fredapi import Fred # 파일 상단 import 부분에 추가
 
 
@@ -26,7 +25,8 @@ from fredapi import Fred # 파일 상단 import 부분에 추가
 st.set_page_config(page_title="GEM: Finance Dashboard", page_icon="💎", layout="wide")
 
 def login():
-    if "authenticated" not in st.session_state: st.session_state["authenticated"] = False
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
     if not st.session_state["authenticated"]:
         st.title("💎 GEM: Finance Dashboard")
         st.caption("MASTER, please enter the password to access the command center.")
@@ -70,10 +70,12 @@ def run_status_screener(ticker_list):
     """
     (최종 단순화 버전) 전체 종목에 대해 '매수', '주의/매도', '중립'의 3가지 상태로만 판정합니다.
     """
-    if not ticker_list: return pd.DataFrame()
+    if not ticker_list:
+        return pd.DataFrame()
 
     data = yf.download(ticker_list, period="1y", progress=False, auto_adjust=True)
-    if data.empty: return pd.DataFrame()
+    if data.empty:
+        return pd.DataFrame()
 
     final_results = []
     progress_bar = st.progress(0, text="전체 종목 상태 분석 시작...")
@@ -84,7 +86,8 @@ def run_status_screener(ticker_list):
             stock_df = data.loc[:, (slice(None), ticker)]
             stock_df.columns = stock_df.columns.droplevel(1)
             
-            if stock_df.empty or len(stock_df) < 61: continue
+            if stock_df.empty or len(stock_df) < 61:
+                continue
 
             # 지표 계산 (SMA, 52주 고점, RSI)
             sma20 = stock_df['Close'].rolling(window=20).mean()

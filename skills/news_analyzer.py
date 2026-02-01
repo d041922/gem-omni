@@ -21,7 +21,8 @@ def get_company_news(ticker: str, limit: int = 5) -> List[Dict[str, Any]]:
 
         # Format news items
         news_items = []
-        for item in news[:limit]:
+        for item in news[:
+            limit]:
             news_items.append({
                 'title': item.get('title', 'N/A'),
                 'publisher': item.get('publisher', 'Unknown'),
@@ -32,7 +33,7 @@ def get_company_news(ticker: str, limit: int = 5) -> List[Dict[str, Any]]:
 
         return news_items
 
-    except Exception as e:
+    except Exception:
         return []
 
 
@@ -58,13 +59,6 @@ def get_analyst_ratings(ticker: str) -> Dict[str, Any]:
         if target_mean and current_price:
             upside_pct = ((target_mean - current_price) / current_price * 100)
 
-        # 3. Recommendation Counts
-        rec_counts = {
-            'Strong Buy': info.get('recommendationDesc', '').count('Strong Buy'),
-            'Buy': info.get('recommendationDesc', '').count('Buy'),
-            'Hold': info.get('recommendationDesc', '').count('Hold'),
-        }
-        
         # 4. Supplemental data from recommendations dataframe (if available)
         recent_changes = {'upgrades': 0, 'downgrades': 0}
         try:
@@ -74,7 +68,7 @@ def get_analyst_ratings(ticker: str) -> Dict[str, Any]:
                 if not recent.empty:
                     recent_changes['upgrades'] = len(recent[recent['To Grade'].str.contains('Buy|Outperform|Overweight', case=False, na=False)])
                     recent_changes['downgrades'] = len(recent[recent['To Grade'].str.contains('Sell|Underperform|Reduce', case=False, na=False)])
-        except:
+        except Exception:
             pass
 
         return {
@@ -111,9 +105,12 @@ def get_insider_transactions(ticker: str) -> Dict[str, Any]:
         buys = len(recent[recent['Transaction'].str.contains('Buy|Purchase', case=False, na=False)])
         sells = len(recent[recent['Transaction'].str.contains('Sell|Sale', case=False, na=False)])
 
-        if buys > sells: sentiment = 'Bullish'
-        elif sells > buys: sentiment = 'Bearish'
-        else: sentiment = 'Neutral'
+        if buys > sells:
+            sentiment = 'Bullish'
+        elif sells > buys:
+            sentiment = 'Bearish'
+        else:
+            sentiment = 'Neutral'
 
         return {
             'sentiment': sentiment,
@@ -122,7 +119,7 @@ def get_insider_transactions(ticker: str) -> Dict[str, Any]:
             'recent_summary': f"최근 20건 중 매수 {buys}건, 매도 {sells}건",
             'status': 'success'
         }
-    except:
+    except Exception:
         return {'status': 'error', 'sentiment': 'Neutral'}
 
 
@@ -177,19 +174,23 @@ def analyze_news_sentiment(news_items: List[Dict[str, Any]], ticker: str = "") -
         t = item.get('title', '').lower()
 
 
-        if any(w in t for w in pos_words): p_count += 1
+        if any(w in t for w in pos_words):
+            p_count += 1
 
 
-        if any(w in t for w in neg_words): n_count += 1
+        if any(w in t for w in neg_words):
+            n_count += 1
 
 
 
 
 
-    if p_count > n_count: return f"📈 긍정 ({p_count}/{len(news_items)})"
+    if p_count > n_count:
+        return f"📈 긍정 ({p_count}/{len(news_items)})"
 
 
-    if n_count > p_count: return f"📉 부정 ({n_count}/{len(news_items)})"
+    if n_count > p_count:
+        return f"📉 부정 ({n_count}/{len(news_items)})"
 
 
     return "➡️ 중립"

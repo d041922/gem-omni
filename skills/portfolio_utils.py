@@ -1,80 +1,76 @@
 """
 Portfolio Utility Functions
-Unified portfolio data access and checks
-
-Solves:
-  - stock_analysis.py와 stock_analysis_crew.py의 포트폴리오 체크 로직 불일치 문제
-  - 중복 코드 제거
-  - 홈 화면 및 각 페이지 데이터 로딩 통합
+Unified portfolio data access and checks with GlobalDataManager integration.
+Updated: Sector Auto-fill
 """
 
 import streamlit as st
 import pandas as pd
-import yfinance as yf
 from typing import Optional, Dict, Any, Tuple
 from skills.gsheet_loader import load_data_from_gsheet
 from skills.finance_core_lib import calculate_portfolio_metrics
+from core.data_manager import get_data_manager
 
 
 def load_portfolio_data(force_refresh: bool = False) -> Tuple[pd.DataFrame, Dict[str, float]]:
     """
-    Unified portfolio data loader with caching.
-    Ensures data is available for all pages (Home, Dashboard, Analysis).
-
-    Args:
-        force_refresh: If True, bypass cache and reload from GSheet/YFinance
-
-    Returns:
-        (calculated_df, current_prices_dict)
+    Unified portfolio data loader with central caching via GlobalDataManager.
+    Includes Sector Auto-fill logic.
     """
-    # 1. Check if already in session state and not forcing refresh
     if not force_refresh and 'calculated_portfolio' in st.session_state:
         return st.session_state.calculated_portfolio, st.session_state.get('current_prices', {})
 
-    # 2. Load from Google Sheets
+    dm = get_data_manager()
+
     try:
-        # Use a container for status messages if we're in a script with UI
         with st.spinner("⏳ 구글 시트에서 포트폴리오 로드 중..."):
             portfolio_df, watchlist_df, cash_df = load_data_from_gsheet("GEM_Finance_Portfolio")
             st.session_state.raw_portfolio_df = portfolio_df
             st.session_state.watchlist_df = watchlist_df
             st.session_state.cash_df = cash_df
 
-        # 3. Fetch current prices
-        with st.spinner("🚀 실시간 주가 데이터 수집 중..."):
+        # Ensure '카테고리' column exists
+        if '카테고리' not in portfolio_df.columns:
+            if 'Category' in portfolio_df.columns:
+                portfolio_df['카테고리'] = portfolio_df['Category']
+            else:
+                portfolio_df['카테고리'] = 'Unknown'
+
+        with st.spinner("🚀 실시간 데이터 및 섹터 정보 수집 중..."):
             current_prices = {}
             ticker_col = '종목코드' if '종목코드' in portfolio_df.columns else '티커코드'
 
             if ticker_col in portfolio_df.columns:
                 tickers = portfolio_df[ticker_col].dropna().unique()
+                
+                # Iterate to fetch price AND sector
                 for ticker in tickers:
                     try:
-                        # Optimization: Use existing price if not forcing refresh
-                        if not force_refresh and 'current_prices' in st.session_state and ticker in st.session_state.current_prices:
-                            current_prices[ticker] = st.session_state.current_prices[ticker]
-                            continue
-                            
-                        stock = yf.Ticker(str(ticker))
-                        # Use fast_info for performance
-                        price = stock.fast_info.get('last_price', None)
-                        if price is None:
-                            hist = stock.history(period='1d')
-                            if not hist.empty:
-                                price = hist['Close'].iloc[-1]
+                        snapshot = dm.get_stock_snapshot(str(ticker))
                         
-                        if price:
-                            current_prices[ticker] = float(price)
-                    except:
+                        # 1. Price
+                        if "current_price" in snapshot:
+                            current_prices[ticker] = snapshot["current_price"]
+                        
+                        # 2. Sector Auto-fill
+                        # If category is missing or Unknown, try to fill it from snapshot
+                        mask = (portfolio_df[ticker_col] == ticker) & \
+                               ((portfolio_df['카테고리'].isna()) | (portfolio_df['카테고리'] == 'Unknown') | (portfolio_df['카테고리'] == ''))
+                        
+                        if mask.any() and "sector" in snapshot and snapshot["sector"] != "Unknown":
+                            portfolio_df.loc[mask, '카테고리'] = snapshot["sector"]
+                            
+                    except Exception:
                         pass
 
         # 4. Calculate metrics
-        exchange_rate = 1450  # TODO: Fetch real exchange rate
+        exchange_rate = 1450  
         calculated_df = calculate_portfolio_metrics(portfolio_df, current_prices, exchange_rate)
         
         # 5. Store in session state
         st.session_state.calculated_portfolio = calculated_df
         st.session_state.current_prices = current_prices
-        st.session_state.cash_df = cash_df # Ensure cash_df is explicitly saved here
+        st.session_state.cash_df = cash_df 
         
         return calculated_df, current_prices
 
@@ -126,7 +122,7 @@ def check_portfolio_holding(ticker: str) -> Optional[Dict[str, Any]]:
 
     row = match.iloc[0]
 
-    # Extract data
+    # Extract data safely with defaults
     name = row.get('종목명', row.get('name', ticker))
     quantity = float(row.get('수량', 0))
     avg_price_usd = float(row.get('평균 단가(USD)', row.get('avg_price_usd', 0)))
@@ -161,11 +157,7 @@ def get_portfolio_context_for_ai(ticker: str) -> str:
         return "\n## 📊 현재 포트폴리오 정보\n- 포트폴리오 데이터 없음\n"
 
     # Calculate total value
-    total_value = 0
-    if '평가금액(KRW)' in portfolio_df.columns:
-        total_value = portfolio_df['평가금액(KRW)'].sum()
-    elif 'current_value' in portfolio_df.columns:
-        total_value = portfolio_df['current_value'].sum()
+    total_value = portfolio_df['평가금액(KRW)'].sum() if '평가금액(KRW)' in portfolio_df.columns else 0
 
     # Build holdings list
     holdings = []
@@ -175,10 +167,9 @@ def get_portfolio_context_for_ai(ticker: str) -> str:
         ticker_val = row.get('종목코드', row.get('티커코드', ''))
         name_val = row.get('종목명', row.get('name', ''))
         sector = row.get('카테고리', row.get('sector', 'Unknown'))
-        value = row.get('평가금액(KRW)', row.get('current_value', 0))
+        value = row.get('평가금액(KRW)', 0)
         value_pct = (value / total_value * 100) if total_value > 0 else 0
 
-        # Accumulate sector distribution
         sector_dist[sector] = sector_dist.get(sector, 0) + value_pct
 
         holdings.append({
@@ -192,7 +183,6 @@ def get_portfolio_context_for_ai(ticker: str) -> str:
     # Check if target ticker exists in portfolio
     existing_position = check_portfolio_holding(ticker)
 
-    # Format context
     context = f"""
 ## 📊 현재 포트폴리오 정보
 - 총 보유 종목: {len(holdings)}개
@@ -204,20 +194,13 @@ def get_portfolio_context_for_ai(ticker: str) -> str:
         context += f"  - 수익률: {existing_position['return_pct']:.1f}%\n"
         context += f"  - 평가금액: ₩{existing_position['current_value']/1e6:.0f}백만원\n"
         context += f"  - 보유 비중: {(existing_position['current_value']/total_value*100):.1f}%\n"
-        context += f"  - 계좌: {existing_position['account']}\n"
     else:
-        context += f"- **{ticker} 기존 보유**: 없음 (신규 매수 검토 대상)\n"
+        context += f"- **{ticker} 기존 보유**: 없음\n"
 
-    # Sector distribution
     context += "\n### 섹터 분산 현황\n"
-    for sector, pct in sorted(sector_dist.items(), key=lambda x: -x[1]):
+    for sector, pct in sorted(sector_dist.items(), key=lambda x:
+        -x[1]):
         context += f"- {sector}: {pct:.1f}%\n"
-
-    # Top 5 holdings
-    context += "\n### Top 5 보유 종목\n"
-    sorted_holdings = sorted(holdings, key=lambda x: -x['value_pct'])[:5]
-    for h in sorted_holdings:
-        context += f"- {h['name']} ({h['ticker']}): {h['value_pct']:.1f}%\n"
 
     return context
 
@@ -236,7 +219,6 @@ def get_portfolio_summary() -> Optional[Dict[str, Any]]:
     total_profit = portfolio_df['손익(KRW)'].sum() if '손익(KRW)' in portfolio_df.columns else 0
     return_pct = (total_profit / total_cost * 100) if total_cost > 0 else 0
 
-    # Sector distribution
     sectors = {}
     if '카테고리' in portfolio_df.columns:
         sector_values = portfolio_df.groupby('카테고리')['평가금액(KRW)'].sum()
@@ -254,7 +236,6 @@ def get_portfolio_summary() -> Optional[Dict[str, Any]]:
 def get_full_portfolio_analysis_context() -> str:
     """
     AI 분석을 위해 포트폴리오의 모든 상세 정보를 텍스트로 가공합니다.
-    (app.py의 복잡한 로직을 이관)
     """
     df = load_portfolio_from_session()
     if df is None or df.empty:
@@ -265,28 +246,17 @@ def get_full_portfolio_analysis_context() -> str:
     total_profit = df['손익(KRW)'].sum()
     return_pct = (total_profit / total_cost * 100) if total_cost > 0 else 0
 
-    top_3 = df.nlargest(3, '수익률(%)')
-    bottom_3 = df.nsmallest(3, '수익률(%)')
-    
+    df.nlargest(3, '수익률(%)')
     name_col = '종목명' if '종목명' in df.columns else 'name'
     
-    context = f"## 포트폴리오 전체 요약\n"
-    context += f"- 총 매수금액: ₩{total_cost/1e8:.2f}억\n"
+    context = "## 포트폴리오 요약\n"
     context += f"- 총 평가금액: ₩{total_value/1e8:.2f}억\n"
-    context += f"- 총 손익: ₩{total_profit/1e4:.0f}만원 ({return_pct:+.1f}%)\n\n"
+    context += f"- 총 수익률: {return_pct:+.1f}%\n\n"
 
-    context += "### 수익률 상위 3종목\n"
-    for _, row in top_3.iterrows():
-        context += f"- {row[name_col]}: {row['수익률(%)']:.1f}%\n"
-
-    context += "\n### 수익률 하위 3종목\n"
-    for _, row in bottom_3.iterrows():
-        context += f"- {row[name_col]}: {row['수익률(%)']:.1f}%\n"
-
-    context += "\n### 전체 보유 종목 상세\n"
+    context += "### 전체 보유 종목 상세\n"
     for _, row in df.iterrows():
         ticker = row.get('티커코드', row.get('종목코드', 'N/A'))
         val_pct = (row['평가금액(KRW)'] / total_value * 100) if total_value > 0 else 0
-        context += f"- {row[name_col]} ({ticker}): 비중 {val_pct:.1f}%, 수익률 {row['수익률(%)']:.1f}%, 평가액 ₩{row['평가금액(KRW)']/1e6:.1f}M\n"
+        context += f"- {row[name_col]} ({ticker}): 비중 {val_pct:.1f}%, 수익률 {row['수익률(%)']:.1f}%\n"
 
     return context

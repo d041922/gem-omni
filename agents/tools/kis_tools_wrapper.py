@@ -4,7 +4,7 @@ Wraps existing kis_tools functionality into CrewAI Tools
 """
 from crewai.tools import BaseTool
 from typing import Type, Any, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 import sys
 import os
 

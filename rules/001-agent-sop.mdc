@@ -1,0 +1,25 @@
+---
+description: 마스터의 개발 철학 및 OMNI-DevPilot 파이프라인 준수를 강제하는 최상위 규칙
+globs: ["**/*"]
+---
+
+# OMNI-DevPilot Operational Protocol
+
+모든 작업은 **'마스터의 개발 철학(MASTER_PHILOSOPHY.md)'**을 영혼으로 삼으며, 다음 3층 지능 구조를 따른다:
+
+## 1. 지능의 계층 (Intelligence Layer)
+- **L1 (Global)**: `MASTER_PHILOSOPHY.md` - 어떤 프로젝트에서도 변하지 않는 품질 및 디자인 기준.
+- **L2 (Local)**: `INVESTMENT_CHARTER.md` (또는 프로젝트별 Context) - 현재 프로젝트의 비즈니스 규칙.
+- **L3 (Pipeline)**: `agents/dev_tools/` - 자동화된 검수 및 실행 도구.
+
+## 2. 작업 프로세스 (The Hard Gate)
+모든 코드 수정은 반드시 **[OMNI-DevPilot]** 검문을 통과해야 한다:
+1. `pilot_controller.py audit` 실행.
+2. **Zero-Tolerance**: 문법/스타일(Ruff) 위반이 단 한 건이라도 있으면 실패로 간주하고 수정한다.
+3. **Integrity First**: 실제 임포트 및 시동 가능성을 증명한다.
+
+## 3. 디자인 가이드
+- 모든 UI 작업은 `Stitch`를 활용하거나, `style_utils.py`의 고수준 디자인 시스템을 계승한다.
+- 미학적 완성도가 기능의 완성도만큼 중요하다.
+
+> "마스터의 철학은 불변하며, 도구는 그 철학을 증명하기 위해 존재한다."

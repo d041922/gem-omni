@@ -1,3 +1,32 @@
 ---
-alwaysApply: true
+description: 금융 데이터 처리, 환율 변환, 티커 명명 규칙 등 도메인 특화 표준
+globs: ["**/*.py", "pages/*.py", "skills/*.py", "agents/**/*.py"]
 ---
+
+# Finance Domain Standards
+
+## 1. Currency & Exchange Rates
+- **Base Currency**: 모든 최종 보고 및 합계는 **KRW**를 기본 단위로 한다.
+- **USD/KRW Handling**: 
+  - 해외 자산 분석 시 반드시 환율 변환을 거쳐야 한다.
+  - 환율 데이터가 없을 경우 `scripts/omni_commander.py`의 기본값(예: 1,450원)을 참조하거나 `MarketDataTool`을 통해 실시간 환율을 가져온다.
+- **Format**: 
+  - 금액: `1,234,567 KRW` (천 단위 쉼표 필수)
+  - 수익률: `+12.34%` 또는 `-5.67%` (소수점 둘째 자리, 부호 명시)
+
+## 2. Asset Identification (Ticker Standard)
+- **US Market**: 심볼만 사용 (e.g., `AAPL`, `TSLA`, `NVDA`)
+- **KR Market**: 6자리 종목코드 + 접미사 필수
+  - KOSPI: `.KS` (e.g., `005930.KS`)
+  - KOSDAQ: `.KQ` (e.g., `247540.KQ`)
+- **Crypto**: `BTC-USD`, `ETH-KRW` 등 명확한 페어 명시
+
+## 3. Performance Metrics Logic
+- **Purchase Cost (매수금액)**: `수량 × 평균단가 × 매수시 환율` (환율 정보 부재 시 현재 환율 적용)
+- **Current Value (평가금액)**: `수량 × 현재가 × 현재 환율`
+- **Profit/Loss (손익)**: `평가금액 - 매수금액`
+- **Total Return (수익률)**: `(손익 / 매수금액) × 100`
+
+## 4. Analysis Principles
+- **Benchmarking**: 모든 성과 분석은 시장 지수(S&P 500, KOSPI)와의 비교를 포함해야 한다.
+- **Risk metrics**: 단순 수익률 외에 MDD(최대 낙폭), 변동성, 샤프 지수 등을 가능한 한 함께 제시한다.

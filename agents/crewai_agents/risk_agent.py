@@ -10,9 +10,6 @@ import os
 # Add project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from agents.tools.quant_tools import QuantRiskAnalysisTool
-from agents.tools.file_loader_tool import CachedDataLoaderTool
-from agents.tools.validation_tool import PortfolioValidationTool
 from pathlib import Path
 
 

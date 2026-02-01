@@ -6,7 +6,7 @@ AI 에이전트에게 컨텍스트를 제공함.
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime
 
 class PolicyManager:
@@ -71,7 +71,8 @@ class PolicyManager:
             self.policy_path.parent.mkdir(parents=True, exist_ok=True)
             
             # 메타데이터 업데이트
-            if 'meta' not in policy_data: policy_data['meta'] = {}
+            if 'meta' not in policy_data:
+                policy_data['meta'] = {}
             policy_data['meta']['last_updated'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             with open(self.policy_path, 'w', encoding='utf-8') as f:

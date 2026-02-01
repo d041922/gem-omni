@@ -4,9 +4,9 @@ Strategy Engine - 통합 전략 분석 코어
 """
 import pandas as pd
 import json
-from typing import Dict, List, Any
+from typing import Dict, Any
 from skills.policy_manager import PolicyManager
-from skills.portfolio_utils import get_portfolio_summary, load_portfolio_from_session
+from skills.portfolio_utils import load_portfolio_from_session
 from core.models import get_gemini_llm
 
 class StrategyEngine:

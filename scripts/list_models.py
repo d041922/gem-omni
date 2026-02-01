@@ -1,5 +1,4 @@
 import google.generativeai as genai
-import os
 import streamlit as st
 
 # secrets.toml 또는 환경 변수에서 키 로드

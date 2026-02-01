@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import sys
-sys.stdout.reconfigure(encoding='utf-8')
-
+import yfinance as yf
 from skills.gsheet_loader import load_data_from_gsheet
 from skills.finance_core_lib import calculate_portfolio_metrics
-import yfinance as yf
-import pandas as pd
+
+sys.stdout.reconfigure(encoding='utf-8')
 
 # Load data
 df, _, _ = load_data_from_gsheet('GEM_Finance_Portfolio')

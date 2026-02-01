@@ -1,5 +1,4 @@
 from skills.kis_tools import KISConnector
-import sys
 
 def test():
     try:

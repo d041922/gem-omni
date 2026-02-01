@@ -2,7 +2,7 @@ import json
 import os
 import logging
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 logger = logging.getLogger("GEM_OMNI")
 
