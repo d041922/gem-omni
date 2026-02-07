@@ -16,11 +16,13 @@ def test_pivot_points_calculation(factor_engine):
         
     pivots = factor_engine.calculate_pivot_points(mock_ohlc)
     
-    assert "P" in pivots
-    assert "R1" in pivots
-    assert "S1" in pivots
+    assert "Classic" in pivots
+    p = pivots["Classic"]
+    assert "P" in p
+    assert "R1" in p
+    assert "S1" in p
     # P = (150 + 100 + 140) / 3 = 130
-    assert pivots["P"] == 130.0
+    assert p["P"] == 130.0
 
 def test_ma_ribbon_logic(factor_engine):
     """MA Ribbon(6단계 추세판) 로직 검증"""

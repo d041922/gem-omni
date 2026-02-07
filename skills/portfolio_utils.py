@@ -111,8 +111,11 @@ def check_portfolio_holding(ticker: str) -> Optional[Dict[str, Any]]:
 
     # Normalize ticker for comparison
     portfolio_df_copy = portfolio_df.copy()
-    portfolio_df_copy['_normalized_ticker'] = portfolio_df_copy[ticker_col].astype(str).str.upper().str.strip()
-    ticker_normalized = str(ticker).upper().strip()
+    
+    # [FIX] Use confirmed header: '종목코드'
+    col_name = '종목코드' if '종목코드' in portfolio_df_copy.columns else ticker_col
+    portfolio_df_copy['_normalized_ticker'] = portfolio_df_copy[col_name].astype(str).str.split('.').str[0].str.upper().str.strip()
+    ticker_normalized = str(ticker).split('.')[0].upper().strip()
 
     # Find match
     match = portfolio_df_copy[portfolio_df_copy['_normalized_ticker'] == ticker_normalized]
@@ -122,11 +125,15 @@ def check_portfolio_holding(ticker: str) -> Optional[Dict[str, Any]]:
 
     row = match.iloc[0]
 
-    # Extract data safely with defaults
-    name = row.get('종목명', row.get('name', ticker))
-    quantity = float(row.get('수량', 0))
-    avg_price_usd = float(row.get('평균 단가(USD)', row.get('avg_price_usd', 0)))
-    avg_price_krw = float(row.get('평균 단가(KRW)', row.get('avg_price_krw', 0)))
+    # Extract data safely with precise header mapping
+    name = row.get('종목명', ticker)
+    quantity = float(str(row.get('수량', 0)).replace(',', ''))
+    avg_price_usd = float(str(row.get('평균 단가(USD)', 0)).replace(',', ''))
+    avg_price_krw = float(str(row.get('평균 단가(KRW)', 0)).replace(',', ''))
+    
+    # Deciding currency
+    is_kr = ".KS" in str(row.get('종목코드', '')) or ".KQ" in str(row.get('종목코드', ''))
+    avg_price = avg_price_krw if is_kr else avg_price_usd
     current_value = float(row.get('평가금액(KRW)', row.get('current_value', 0)))
     profit_loss = float(row.get('손익(KRW)', row.get('profit_loss', 0)))
     return_pct = float(row.get('수익률(%)', row.get('return_pct', 0)))
@@ -137,6 +144,7 @@ def check_portfolio_holding(ticker: str) -> Optional[Dict[str, Any]]:
         'ticker': ticker,
         'name': name,
         'quantity': quantity,
+        'avg_price': avg_price, # Unified price
         'avg_price_usd': avg_price_usd,
         'avg_price_krw': avg_price_krw,
         'current_value': current_value,

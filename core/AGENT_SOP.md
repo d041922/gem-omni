@@ -1,4 +1,4 @@
-# GEM: OMNI 에이전트 표준 운영 절차 (SOP) v4.0 (통합본)
+# GEM: OMNI 에이전트 표준 운영 절차 (SOP) v4.1 (Zero Regression Edition)
 > "검증되지 않은 코드는 쓰레기다. 구글 엔지니어링 표준과 지식의 보존만이 살길이다."
 
 ## 0. 최상위 원칙: Google Engineering Standard (L7+)
@@ -7,10 +7,11 @@
 3. **Test-Driven Confidence**: 기능을 추가하기 전 검증 테스트 준비.
 4. **Error over Silence**: 모든 예외는 로그 또는 UI에 명확히 보고.
 
-## 1. Zero Regression & Atomic Edit (철벽 방어) - [NEW]
-- **Read-Before-Edit**: `replace` 직전, 반드시 `read_file`로 최신 코드를 확인한다.
-- **No Overwrite Policy**: 대형 파일은 `write_file` 사용을 엄격히 금지하며, 오직 `replace`만 사용한다.
-- **Section Verification**: 수정 후 타 섹션 유실 여부를 반드시 텍스트 검색으로 확인한다.
+## 1. Zero Regression & Atomic Edit (철벽 방어) - [v4.1]
+- **Read-Before-Edit [MANDATORY]**: 모든 수정(`replace`/`write`) 직전 턴에 반드시 `read_file`로 최신 코드를 재확인한다. 기억에 의존한 수정은 금지한다.
+- **No Overwrite Policy [STRICT]**: 50라인 이상 파일에 대한 `write_file` 전체 덮어쓰기를 엄격히 금지한다. 반드시 `replace`로 부분 수술한다.
+- **Anchor Verification [REPORT]**: 수정 후, 수정하지 않은 섹션의 핵심 키워드(예: `with tab2`, `cur_sym` 등)가 생존해 있는지 검색하여 보고서에 증거를 남긴다.
+- **가상환경 고정**: 반드시 `.\venv\Scripts\python.exe` (점 없는 것)를 사용한다.
 
 ## 2. 작업 파이프라인: The Triple-Lock Check (강제)
 수정 후 다음 3단계를 통과해야 한다.
