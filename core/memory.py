@@ -1,74 +1,183 @@
+"""
+OMNI Memory System (v5.0) - Grand Integration Edition
+Inspired by Prism Insight's Recursive Learning Architecture.
+Provides deep journaling, intuition mapping, and principle extraction.
+"""
+import sqlite3
 import json
-import os
 import logging
-from datetime import datetime
-from typing import List, Dict, Any
+import os
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
 
-logger = logging.getLogger("GEM_OMNI")
+logger = logging.getLogger(__name__)
 
-class MemorySystem:
+class UserMemoryManager:
     """
-    [GEM: OMNI] Integrated Memory System
-    1. Short-Term: 대화 맥락 (Context)
-    2. Long-Term: 사용자 프로필 (Profile)
+    마스터의 경험(Journal)을 학습하여 지혜(Principle)로 승화시키는 영구 기억 장치.
     """
-    def __init__(self, memory_dir: str = "memory"):
-        self.memory_dir = memory_dir
-        self.history_file = os.path.join(memory_dir, "conversation_history.json")
-        self.profile_file = os.path.join(memory_dir, "user_profile.json")
 
-        self.conversation_history: List[Dict[str, Any]] = []
-        self.user_profile: Dict[str, Any] = {}
+    def __init__(self, db_path: str = "data/omni.db"):
+        self.db_path = db_path
+        if db_path != ":memory:":
+            os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+        self._ensure_tables()
 
-        self._ensure_memory_dir()
-        self.load_all_memory()
+    def _get_connection(self):
+        return sqlite3.connect(self.db_path)
 
-    def _ensure_memory_dir(self):
-        if not os.path.exists(self.memory_dir):
-            os.makedirs(self.memory_dir)
-
-    def load_all_memory(self):
-        """모든 종류의 기억을 파일에서 로드"""
-        self.conversation_history = self._load_json(self.history_file, default=[])
-        default_profile = {
-            "risk_tolerance": "중간",  # 보수적/중간/공격적
-            "investment_goal": "장기 자산 증식",
-            "investment_horizon": "10년",  # 단기(<3년)/중기(3-10년)/장기(>10년)
-            "preferred_strategy": "가치 투자",  # 가치/성장/배당/퀀트/혼합
-            "max_single_position": 15,  # %
-            "max_sector_concentration": 30,  # %
-            "rebalancing_threshold": 5,  # %
-            "portfolio": []
-        }
-        self.user_profile = self._load_json(self.profile_file, default=default_profile)
-
-    def _load_json(self, filepath: str, default: Any) -> Any:
-        if os.path.exists(filepath):
-            try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except Exception as e:
-                logger.error(f"Failed to load {filepath}: {e}")
-        return default
-
-    def save_all_memory(self):
-        """모든 기억을 파일에 저장"""
-        self._save_json(self.history_file, self.conversation_history)
-        self._save_json(self.profile_file, self.user_profile)
-
-    def _save_json(self, filepath: str, data: Any):
+    def _ensure_tables(self):
+        """Prism Insight 기반의 고도화된 스키마 초기화"""
+        conn = self._get_connection()
         try:
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.error(f"Failed to save {filepath}: {e}")
+            cursor = conn.cursor()
+            
+            # 1. 일반 기억 (대화 로그 등)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_memories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    memory_type TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    ticker TEXT,
+                    importance REAL DEFAULT 0.5,
+                    created_at TEXT NOT NULL,
+                    tags TEXT
+                )
+            """)
+            
+            # 2. 투자 일지 (Trading Journal) - Prism Insight 정수 이식
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS trading_journal (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ticker TEXT NOT NULL,
+                    trigger_type TEXT, -- 진입 근거 (e.g., RSI_Oversold)
+                    confidence_score INTEGER, -- 확신도 (0-100)
+                    situation_analysis TEXT, -- 당시 시장 상황 분석
+                    buy_price REAL,
+                    sell_price REAL,
+                    profit_rate REAL, -- 사후 업데이트 대상
+                    tracking_status TEXT DEFAULT 'active', -- active, completed
+                    created_at TEXT NOT NULL
+                )
+            """)
+            
+            # 3. 투자 직관 및 통계 (Trading Intuitions)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS trading_intuitions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pattern_name TEXT UNIQUE,
+                    occurrence_count INTEGER DEFAULT 0,
+                    success_count INTEGER DEFAULT 0,
+                    avg_profit REAL DEFAULT 0.0,
+                    last_updated TEXT
+                )
+            """)
+            
+            # 4. 투자 원칙 (Investment Principles)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS investment_principles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    principle_text TEXT NOT NULL,
+                    source_ids TEXT, -- 근거가 된 journal ID들
+                    created_at TEXT NOT NULL
+                )
+            """)
+            
+            # 5. 사용자 선호도
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_preferences (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+            """)
+            
+            conn.commit()
+        finally:
+            conn.close()
 
-    # --- Interface for Short-Term Memory ---
-    def add_dialogue(self, role: str, content: str):
-        entry = {
-            "timestamp": datetime.now().isoformat(),
-            "role": role,
-            "content": content
-        }
-        self.conversation_history.append(entry)
-        self._save_json(self.history_file, self.conversation_history) # Auto-save
+    # --- Core Memory Methods ---
+    def add_memory(self, memory_type: str, content: str, ticker: Optional[str] = None, importance: float = 0.5, tags: List[str] = None) -> int:
+        now = datetime.now(timezone.utc).isoformat()
+        tags_json = json.dumps(tags) if tags else None
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO user_memories (memory_type, content, ticker, importance, created_at, tags)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (memory_type, content, ticker, importance, now, tags_json))
+            conn.commit()
+            return cursor.lastrowid
+        finally:
+            conn.close()
+
+    # --- Journal & Principle Methods (New in v5.0) ---
+    def add_journal(self, ticker: str, trigger_type: str = None, confidence_score: int = 50, situation_analysis: str = "") -> int:
+        """전문 트레이딩 일지 기록"""
+        now = datetime.now(timezone.utc).isoformat()
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO trading_journal (ticker, trigger_type, confidence_score, situation_analysis, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (ticker, trigger_type, confidence_score, situation_analysis, now))
+            conn.commit()
+            return cursor.lastrowid
+        finally:
+            conn.close()
+
+    def add_principle(self, text: str, source_ids: str = "") -> int:
+        """학습된 투자 원칙 저장"""
+        now = datetime.now(timezone.utc).isoformat()
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO investment_principles (principle_text, source_ids, created_at)
+                VALUES (?, ?, ?)
+            """, (text, source_ids, now))
+            conn.commit()
+            return cursor.lastrowid
+        finally:
+            conn.close()
+
+    def recall(self, ticker: Optional[str] = None, keyword: Optional[str] = None, limit: int = 5) -> List[Dict[str, Any]]:
+        query = "SELECT id, memory_type, content, ticker, importance, created_at FROM user_memories WHERE 1=1"
+        params = []
+        if ticker:
+            query += " AND ticker = ?"
+            params.append(ticker)
+        if keyword:
+            query += " AND content LIKE ?"
+            params.append(f"%{keyword}%")
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        
+        conn = self._get_connection()
+        try:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def update_preferences(self, **kwargs):
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            for k, v in kwargs.items():
+                cursor.execute("INSERT OR REPLACE INTO user_preferences (key, value) VALUES (?, ?)", (k, str(v)))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_preferences(self) -> Dict[str, str]:
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT key, value FROM user_preferences")
+            return {row[0]: row[1] for row in cursor.fetchall()}
+        finally:
+            conn.close()

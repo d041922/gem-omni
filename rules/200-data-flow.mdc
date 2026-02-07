@@ -1,0 +1,24 @@
+---
+alwaysApply: true
+---
+
+# Data Flow & Orchestration Rules
+
+## 1. Single Source of Truth (SSOT)
+- 모든 동적 데이터는 `data/world_state.json`을 유일한 근거로 삼는다.
+
+## 2. Thinking vs. Action (사고와 실행의 분리)
+에이전트는 모든 작업을 다음 두 가지 범주로 명확히 구분하여 설계한다.
+
+### 2.1 Deterministic Action (기계적 실행) - [Machine]
+- **대상**: 데이터 수집, 산술 연산, 리스트 정렬, 캐시 유효성 검사, UI 렌더링.
+- **도구**: Python 코드, SQL, 정규표현식, `DataOrchestrator`.
+- **원칙**: 코드가 할 수 있는 일에 LLM을 개입시키지 않는다. 숫자는 오직 코드로만 계산한다.
+
+### 2.2 Cognitive Reasoning (지능적 사고) - [LLM]
+- **대상**: 리서치 리포트 요약, 투자 전략 수립, 사용자 의도 파악, 복합 데이터 간의 상관관계 해석.
+- **도구**: Gemini Pro / Deep Research.
+- **원칙**: `Deterministic Action`으로 정제된 결과값만을 입력받아 '통찰(Insight)'을 도출하는 데 집중한다.
+
+## 3. Data Access Protocol
+- **Pages (UI)**: 직접 API를 호출하거나 비즈니스 로직을 수행하지 않는다. 오직 `DataOrchestrator`로부터 '가공된 데이터'만 받아 렌더링한다.

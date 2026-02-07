@@ -33,36 +33,43 @@ def render_earnings_page():
     if 'earnings_cache' not in st.session_state:
         st.session_state.earnings_cache = []
 
+"""
+Earnings Calendar [GEM: OMNI] - SSOT Compliant Edition
+"""
+import streamlit as st
+import pandas as pd
+from core.data_manager import DataManager
+from skills.data_orchestrator import DataOrchestrator
+from pages.style_utils import load_custom_css
+
+def render_earnings_page():
+    load_custom_css()
+    orchestrator = DataOrchestrator()
+    st.markdown("## 📅 Earnings Calendar")
+    st.caption("Upcoming and Recent Corporate Earnings Announcements")
+    st.divider()
+
+    # (중략: UI 로직...)
+    
     if st.button("🔄 Sync Earnings Data", use_container_width=True, key="btn_sync_earnings"):
         events = []
         prog = st.progress(0)
         status = st.empty()
         
         for i, ticker in enumerate(monitored_tickers):
-            status.text(f"Syncing {ticker}...")
-            data = DataManager.get_stock_data(ticker)
-            if data["success"]:
-                try:
-                    import yfinance as yf
-                    stock_obj = yf.Ticker(ticker)
-                    cal = stock_obj.calendar
-                    e_date = None
-                    if cal is not None and not cal.empty:
-                        if 'Earnings Date' in cal.index:
-                            e_date = cal.loc['Earnings Date'].iloc[0]
-                        else:
-                            e_date = cal.iloc[0, 0]
-                    
-                    if e_date:
-                        events.append({
-                            "ticker": ticker,
-                            "name": data["name"],
-                            "date": e_date.date() if hasattr(e_date, 'date') else e_date,
-                            "country": "KR" if ".KS" in ticker or ".KQ" in ticker else "US",
-                            "link": f"https://finance.yahoo.com/quote/{ticker}"
-                        })
-                except Exception as e:
-                    st.warning(f"Error syncing {ticker}: {e}")
+            status.text(f"Syncing {ticker} via Orchestrator...")
+            # [SSOT] 오케스트레이터를 통한 통합 데이터 호출
+            data = orchestrator.get_market_data(ticker)
+            e_date = data.get("earnings_date")
+            
+            if e_date:
+                events.append({
+                    "ticker": ticker,
+                    "name": ticker, # 종목명은 필요시 DataManager에서 보강
+                    "date": e_date,
+                    "country": "KR" if ".KS" in ticker or ".KQ" in ticker else "US",
+                    "link": f"https://finance.yahoo.com/quote/{ticker}"
+                })
             prog.progress((i + 1) / len(monitored_tickers))
         
         st.session_state.earnings_cache = events

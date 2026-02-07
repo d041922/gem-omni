@@ -1,91 +1,135 @@
 """
-Toss-Inspired Dark Design System [GEM: OMNI 2.0] - Robust Edition
+GEM: OMNI Design System (v4.0)
+Glassmorphism & Bento Grid Utilities
 """
 import streamlit as st
-import streamlit.components.v1 as components
 
 def load_custom_css():
     st.markdown("""
-        <style>
-.stApp { background-color: #0D1117
-            color: #E6EDF3
-            }
-.toss-card { background-color: #161B22
-            border-radius: 24px
-            padding: 24px
-            margin-bottom: 16px
-            border: 1px solid #30363D
-            }
-.toss-title { font-size: 0.85rem
-            color: #8B949E
-            font-weight: 600
-            }
-.toss-value { font-size: 2.2rem
-            color: #FFFFFF !important
-            font-weight: 800
-            margin: 10px 0
-            }
-.toss-desc { font-size: 1rem
-            font-weight: 600
-            }
-.toss-plus { color: #F85149
-            }
-.toss-minus { color: #58A6FF
-            }
-        </style>
+    <style>
+        /* Base Theme */
+        .stApp {
+            background-color: #0E1117;
+        }
+        
+        /* Glassmorphism Card */
+        .glass-card {
+            background: rgba(30, 37, 48, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            margin-bottom: 20px;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+        .glass-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(49, 130, 246, 0.5);
+        }
+
+        /* Typography */
+        .card-title {
+            color: #8B949E;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        .card-value {
+            color: #FFFFFF;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .card-delta-pos {
+            color: #FF4B4B;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .card-delta-neg {
+            color: #1C7ED6;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        /* Bento Grid Layout Helpers */
+        .bento-row {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .bento-col {
+            flex: 1;
+            min-width: 300px;
+        }
+        
+        /* Momentum Badge */
+        .momentum-badge {
+            background: rgba(49, 130, 246, 0.15);
+            color: #3182F6;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: inline-block;
+            margin-right: 8px;
+        }
+    </style>
     """, unsafe_allow_html=True)
 
-def format_krw(val):
-    try:
-        v = float(val)
-        if v >= 1e8:
-            return f"{v/1e8:,.2f}억"
-        if v >= 1e6:
-            return f"{v/1e4:,.0f}만"
-        return f"{v:,.0f}"
-    except Exception:
-        return str(val)
-
-def metric_card(title, value, delta=None, color=None):
-    c_class = "toss-neutral"
+def metric_card(title: str, value: str, delta: str = None, color: str = None):
+    """
+    Bento Grid용 Metric Card 컴포넌트
+    """
+    delta_html = ""
     if delta:
-        try:
-            num = float(str(delta).replace('%', '').replace('+', ''))
-            if num > 0:
-                c_class = "toss-plus"
-            elif num < 0:
-                c_class = "toss-minus"
-        except Exception:
-            pass
-    
-    if color == "red":
-        c_class = "toss-plus"
-    elif color == "blue":
-        c_class = "toss-minus"
-
+        delta_class = "card-delta-pos" if "red" in str(color) or "+" in delta else "card-delta-neg"
+        # OMNI에서는 Red가 Positive (수익), Blue가 Negative (손실) 또는 Neutral
+        if color == "blue" and "-" in delta: delta_class = "card-delta-neg"
+        delta_html = f"<div class='{delta_class}'>{delta}</div>"
+        
     st.markdown(f"""
-    <div class="toss-card">
-        <div class="toss-title">{title}</div>
-        <div class="toss-value">{value}</div>
-        <div class="toss-desc {c_class}">{delta if delta else ''}</div>
+    <div class="glass-card">
+        <div class="card-title">{title}</div>
+        <div class="card-value">{value}</div>
+        {delta_html}
     </div>
     """, unsafe_allow_html=True)
 
-def render_tv_chart(ticker, height=500):
-    try:
-        # Simplified TV widget embed
-        components.html(f"<div>TV Chart for {ticker}</div>", height=height)
-    except Exception as e:
-        st.error(f"Chart Error: {e}")
+def bento_box(content_func):
 
-def render_tv_technicals(ticker, height=400):
-    try:
-        components.html(f"<div>TV Tech for {ticker}</div>", height=height)
-    except Exception:
-        pass
+    """
 
-def render_tv_news(ticker, height=400):
-    try:
-        components.html(f"<div>TV News for {ticker}</div>", height=height)
-    except Exception:
-        pass
+    컨텐츠를 감싸는 Glass Container 데코레이터 패턴 (활용 예시)
+
+    """
+
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+
+    content_func()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+
+def localize_signal(signal: str) -> str:
+
+    """영문 퀀트 시그널을 한글 및 배지로 변환"""
+
+    mapping = {
+
+        "Oversold": "🔵 과매도(저점)",
+
+        "Overbought": "🔴 과매수(과열)",
+
+        "Volume Surge": "🔥 수급폭발",
+
+        "Golden Cross Trend": "📈 상승추세",
+
+        "Neutral": "⚪ 중립"
+
+    }
+
+    return mapping.get(signal, signal)

@@ -1,147 +1,79 @@
-# GEM: OMNI - AI 자산 관리 시스템
+# [GEM: OMNI] - The Life Operating System
+> **"Agent for the Happy Me (행복한 나를 위한 에이전트)"**
 
-개인 투자자를 위한 전문가 수준의 AI 기반 포트폴리오 관리 시스템
+## 1. 프로젝트 비전 (Project Vision)
+OMNI는 단순한 앱이 아닙니다. 마스터의 삶을 구성하는 8대 영역을 최적화하고 조율하여 **'행복한 나'**라는 궁극적 목표를 실현하는 **개인용 인공지능 운영체제(Life OS)**입니다.
 
-## 주요 기능
+우리는 **만다라트(Mandalart)** 구조를 통해 삶의 각 영역을 전문 에이전트가 관리하게 하며, 현재 그 첫 번째 기둥인 **[Finance: 재정]** 에이전트를 구축 중입니다.
 
-### 📊 포트폴리오 대시보드
-- Google Sheets 기반 실시간 포트폴리오 조회
-- 자동 메트릭 계산 (수익률, 평가금액, 손익)
-- 리스크 지표 분석 (집중도, 변동성, Sharpe Ratio)
-- AI 기반 투자 인사이트 생성
+상세 비전: `docs/planning/001_OMNI_VISION_MANDALART.md`
 
-### 🔍 개별 종목 분석
-- 미국/한국 주식 실시간 분석
-- 기술적 지표 (RSI, MACD, MA, 볼린저밴드)
-- 펀더멘털 정보 (PER, 시가총액, 베타)
-- AI 투자 의견 (매수/보유/매도 + 목표가 + 전략)
-- 포트폴리오 보유 종목 자동 인식
+---
 
-### 🤖 Multi-Agent 시스템
-- CrewAI 기반 4개 전문 에이전트
-  - Data Sync Agent: 데이터 동기화
-  - Analyst Agent: 포트폴리오 분석
-  - Risk Agent: 리스크 평가
-  - Strategy Agent: 투자 전략 수립
+## 2. 핵심 모듈: Finance Agent (Wealth Commander)
+재정 에이전트는 마스터의 경제적 자유를 지탱하는 두 개의 엔진으로 구성됩니다.
 
-## 토큰 최적화
+### 📈 The Quant Engine (퀀트 엔진)
+- **Velocity of Wealth**: 기관 투자자 수준의 데이터 분석으로 자산 증식 속도를 극대화합니다.
+- **Tools**: 실시간 마켓 스크리너, 섹터 로테이션 분석, 포트폴리오 최적화.
 
-**85-90% 토큰 절감 달성** ✅
+### 🏠 The Life Steward (라이프 집사)
+- **Support for Happiness**: 불어난 자산을 삶의 다른 목표(건강, 관계, 즐거움)와 연결하여 최적의 예산을 제안합니다.
 
-- 프롬프트와 데이터 분리 (90% 절감)
-- 데이터 캐싱 시스템 (87.7% 절감)
-- Context cascade 제거 (51.7% 절감)
-- Streamlit 캐싱 (@st.cache_data)
+상세 기획: `docs/planning/002_FINANCE_AGENT_MASTER_PRD.md`
 
-**비용 절감**:
-- 분석 1회당: $0.072 → $0.008 (89% 절감)
-- 연간 (600회): $43 → $5 ($38 절약)
+---
 
-상세 내용: `docs/reports/FINAL_OPTIMIZATION_REPORT.md`
+## 3. 엔지니어링 원칙 (Engineering Standards)
+우리는 **Google Software Engineering (SwE) Principles**를 엄격히 준수합니다.
 
-## 빠른 시작
+- **Design Before Code**: `Design Doc` 승인 없이 코드를 작성하지 않는다. (`rules/000`)
+- **Single Source of Truth**: 모든 데이터는 `Data Orchestrator`를 통해서만 유통된다. (`rules/200`)
+- **Test-Driven Confidence**: 테스트 코드가 없는 코드는 부서진 코드로 간주한다.
+- **Deterministic Logic**: AI의 추론과 파이썬의 계산을 엄격히 분리한다.
 
-### 1. 환경 설정
+---
+
+## 4. 프로젝트 구조 (Project Structure)
+
+```text
+GEM_OMNI/
+├── core/               # 시스템 헌법 및 최상위 제어 엔진
+├── data/               # [State] 단일 진실 공급원 (SSOT) 및 로그
+├── docs/               # [Design] PRD, Spec, Test Plan 저장소
+├── pages/              # [UI] Streamlit 기반 인터페이스
+├── rules/              # [Law] 구글 엔지니어링 표준 및 도메인 규약
+├── scripts/            # 유틸리티 및 시스템 관리 도구
+├── skills/             # [Tools] 순수 계산기(Calculator) 모음
+├── tests/              # [Gate] 하드 게이트 (pytest)
+├── app.py              # 시스템 엔트리 포인트
+└── requirements.txt    # 의존성 패키지
+```
+
+---
+
+## 5. 빠른 시작 (Quick Start)
+
+### 1) 환경 구축
 ```bash
 python -m venv venv
-source venv/Scripts/activate  # Windows
+.\venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
 
-### 2. API 키 설정
-`.env` 파일 생성:
-```
-GOOGLE_API_KEY=your_gemini_api_key
-OPENAI_API_KEY=your_openai_key  # Optional
-```
-
-### 3. 실행
+### 2) 실행
 ```bash
 streamlit run app.py
 ```
 
-브라우저에서 http://localhost:8501 접속
-
-## 프로젝트 구조
-
-```
-GEM_OMNI/
-├── app.py                      # 메인 애플리케이션
-├── pages/                      # Streamlit 페이지
-│   └── stock_analysis.py       # 개별 종목 분석
-├── agents/                     # CrewAI 에이전트
-│   ├── crewai_agents/          # 에이전트 정의
-│   ├── crews/                  # Crew 오케스트레이션
-│   └── tools/                  # 에이전트 도구
-├── core/                       # 핵심 시스템
-│   ├── base.py                 # 기본 클래스
-│   ├── memory.py               # 메모리 시스템
-│   └── models.py               # 데이터 모델
-├── skills/                     # 재사용 가능 라이브러리
-│   ├── finance_core_lib.py     # 금융 계산
-│   ├── stock_analyzer.py       # 종목 분석
-│   └── technical_indicators.py # 기술적 지표
-├── .claude/                    # AI 프롬프트 (캐싱용)
-│   ├── agents/                 # 에이전트 프롬프트
-│   └── prompts/                # 시스템 프롬프트
-├── rules/                      # 코딩 규칙
-│   ├── 100-python-standard.mdc
-│   ├── 300-streamlit-standard.mdc
-│   └── 400-token-optimization.mdc
-├── tests/                      # 테스트 파일
-├── scripts/                    # 유틸리티 스크립트
-└── docs/                       # 문서
-    ├── guides/                 # 사용 가이드
-    ├── reports/                # 분석 리포트
-    └── reference/              # 참고 자료
-```
-
-## 사용 방법
-
-### 포트폴리오 대시보드
-1. 사이드바 → "📊 Portfolio Dashboard"
-2. Google Sheets 데이터 자동 로드
-3. "🔍 Run AI Analysis" 클릭
-4. AI 인사이트 확인
-
-### 개별 종목 분석
-1. 사이드바 → "🔍 Stock Analysis"
-2. 티커 입력
-   - 미국: AAPL, NVDA, MSFT
-   - 한국: 005930.KS (삼성전자)
-3. "🚀 종목 분석" 클릭
-4. 차트 + 지표 확인
-5. "🤖 AI 투자 의견 생성" 클릭
-
-## 기술 스택
-
-- **Frontend**: Streamlit, Plotly
-- **AI**: Google Gemini 2.0, CrewAI
-- **Data**: yfinance, Google Sheets API
-- **Language**: Python 3.13
-
-## 문서
-
-- **사용 가이드**: `docs/guides/`
-  - ARCHITECTURE.md: 시스템 구조
-  - CREWAI_GUIDE.md: 에이전트 사용법
-- **분석 리포트**: `docs/reports/`
-  - OPTIMIZATION_REPORT.md: 최적화 과정
-  - TEST_RESULTS.md: 검증 결과
-- **코딩 규칙**: `rules/`
-  - 100-python-standard.mdc
-  - 400-token-optimization.mdc
-
-## 라이선스
-
-MIT License
-
-## 기여
-
-이슈 및 PR 환영합니다!
-
 ---
 
-**최종 업데이트**: 2026-01-25
-**버전**: 1.0.0
-**상태**: Production Ready ✅
+## 6. 개발 상태 (Current Status)
+- [x] **Core Vision**: '행복한 나' 만다라트 체계 확립
+- [x] **Infrastructure**: Google SwE 규칙 및 폴더 구조 정비
+- [⏳] **Phase 1**: `Data Orchestrator` (SSOT) 설계 및 구현 중
+- [ ] **Phase 2**: `Market Screener` & `Quant Engine` 개발 예정
+
+---
+**마지막 업데이트**: 2026-02-06
+**상태**: Infra Refactoring & Phase 1 Development

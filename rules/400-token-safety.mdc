@@ -1,0 +1,16 @@
+---
+alwaysApply: true
+---
+
+# Token & Cost Safety Gate
+
+## 1. Token Awareness
+- 코드 수정이나 대량의 데이터 분석 전, 대략적인 토큰 소모량을 예상한다.
+- 한 번의 컨텍스트에 담기 너무 큰 파일(예: 수만 라인의 로그)은 `read_file`로 전체를 읽지 않고 `grep`이나 `tail`로 필요한 부분만 발췌한다.
+
+## 2. Execution Guard
+- 루프(Loop) 내에서 LLM API를 호출하는 코드를 작성할 경우, 반드시 최대 반복 횟수(Max Iteration)를 설정하여 무한 루프와 비용 폭탄을 방지한다.
+- 외부 API 호출 성공 여부를 항상 체크하여 불필요한 재시도를 막는다.
+
+## 3. Safety Warning
+- 작업 예상 비용이 평소보다 높을 것으로 판단될 경우, 실행 전 마스터에게 "예상 토큰량: XXX"를 보고하고 승인을 받는다.

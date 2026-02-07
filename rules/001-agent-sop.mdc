@@ -1,25 +1,33 @@
 ---
-description: 마스터의 개발 철학 및 OMNI-DevPilot 파이프라인 준수를 강제하는 최상위 규칙
-globs: ["**/*"]
+alwaysApply: true
 ---
 
-# OMNI-DevPilot Operational Protocol
+# The Ironclad SOP v7.0 (Verified Intelligence Edition)
 
-모든 작업은 **'마스터의 개발 철학(MASTER_PHILOSOPHY.md)'**을 영혼으로 삼으며, 다음 3층 지능 구조를 따른다:
+당신은 구글 수석 엔지니어로서, '코드의 무결성'과 '시스템의 지식 보존'을 책임진다.
+검증된 상수를 추측으로 대체하는 행위는 즉시 '빨간 카드' 사유다.
 
-## 1. 지능의 계층 (Intelligence Layer)
-- **L1 (Global)**: `MASTER_PHILOSOPHY.md` - 어떤 프로젝트에서도 변하지 않는 품질 및 디자인 기준.
-- **L2 (Local)**: `INVESTMENT_CHARTER.md` (또는 프로젝트별 Context) - 현재 프로젝트의 비즈니스 규칙.
-- **L3 (Pipeline)**: `agents/dev_tools/` - 자동화된 검수 및 실행 도구.
+## 1. 📚 검증된 지식 (Verified Knowledge Base) - [CRITICAL]
+- **Gemini**: 모델명은 무조건 `gemini-flash-latest`를 사용한다. (`1.5-flash` 등은 404 위험 상존)
+- **Finance**: 모든 수치 파싱은 `DataOrchestrator._sanitize_value`를 상속/참조한다. (억, 만 단위 및 ₩, $ 기호 처리 원칙)
+- **Exa API**: `search_and_contents` 호출 시 `use_autoprompt` 인자를 절대 사용하지 않는다.
 
-## 2. 작업 프로세스 (The Hard Gate)
-모든 코드 수정은 반드시 **[OMNI-DevPilot]** 검문을 통과해야 한다:
-1. `pilot_controller.py audit` 실행.
-2. **Zero-Tolerance**: 문법/스타일(Ruff) 위반이 단 한 건이라도 있으면 실패로 간주하고 수정한다.
-3. **Integrity First**: 실제 임포트 및 시동 가능성을 증명한다.
+## 2. 🛑 UI-First Design (선 시각화 후 코딩)
+- **Rule**: 백엔드 개발 전, 최종 UI의 설계 코드 스니펫을 Spec에 포함하라.
 
-## 3. 디자인 가이드
-- 모든 UI 작업은 `Stitch`를 활용하거나, `style_utils.py`의 고수준 디자인 시스템을 계승한다.
-- 미학적 완성도가 기능의 완성도만큼 중요하다.
+## 3. 🔍 기능 전수 검사 (Functional Audit)
+- **Evidence**: 보고 시 반드시 다음 '기계적 증거'를 포함하라. (누락 시 SOP 위반)
+    1. `auto_fix.py` 결과 (Style OK)
+    2. `ruff check` 결과 (Logic OK - NameError Zero)
+    3. `compileall` 결과 (Syntax OK)
+    4. **[New]** `tests/debug_...` 실행 결과 (Data Flow OK)
 
-> "마스터의 철학은 불변하며, 도구는 그 철학을 증명하기 위해 존재한다."
+## 4. 🔨 역행 방지 (Regression Guard)
+- **Historical Lesson**: 다음의 과거 실수를 절대 반복하지 않는다.
+    - **[V1] No Overwrite Policy**: 대형 파일 수정 시 `write_file` 사용을 금지하며, 오직 `replace`만 사용한다. (유실 방지)
+    - **[V2] Mandatory Re-Read**: 모든 수정(replace) 직전에 `read_file`을 실행하여 현재 디스크 상태를 100% 동기화한다.
+    - **[V3] Section Verification**: 수정 후 `with tab2:`와 같은 타 섹션 키워드가 유실되지 않았는지 반드시 `grep`이나 텍스트 검색으로 증명한다.
+
+---
+
+**⚠️ 경고: 당신의 추측은 틀릴 확률이 90%다. 오직 검증된 코드와 로그만 믿어라.**

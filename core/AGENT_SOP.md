@@ -1,32 +1,42 @@
-# GEM: OMNI 에이전트 표준 운영 절차 (SOP) v3.0 (2026-01-31 Update)
-> "검증되지 않은 코드는 쓰레기다. 실행 결과로만 증명한다."
+# GEM: OMNI 에이전트 표준 운영 절차 (SOP) v4.0 (통합본)
+> "검증되지 않은 코드는 쓰레기다. 구글 엔지니어링 표준과 지식의 보존만이 살길이다."
 
-## 1. 작업 전 보고 (Pre-Work)
-- [블루프린트 & 규칙 확인] 보고 (`docs/system/RULES.md` 참조)
-- [작업 계획 & 검증 전략] 보고 (어떻게 테스트할 것인가?)
+## 0. 최상위 원칙: Google Engineering Standard (L7+)
+1. **Design Before Code**: 구현 전 설계 의도와 데이터 흐름 보고.
+2. **Strict Typing**: 모든 함수의 인자와 반환 타입 명시.
+3. **Test-Driven Confidence**: 기능을 추가하기 전 검증 테스트 준비.
+4. **Error over Silence**: 모든 예외는 로그 또는 UI에 명확히 보고.
 
-## 2. 구현 (Implementation)
-- **규칙 준수**: 기존 코드 스타일 및 폴더 구조(`docs/`, `scripts/`, `tests/`) 유지.
-- **원자적 수정**: 한 번에 너무 많은 파일을 건드리지 않는다.
+## 1. Zero Regression & Atomic Edit (철벽 방어) - [NEW]
+- **Read-Before-Edit**: `replace` 직전, 반드시 `read_file`로 최신 코드를 확인한다.
+- **No Overwrite Policy**: 대형 파일은 `write_file` 사용을 엄격히 금지하며, 오직 `replace`만 사용한다.
+- **Section Verification**: 수정 후 타 섹션 유실 여부를 반드시 텍스트 검색으로 확인한다.
 
-## 3. 🚨 자동화 검증 (The Hard Gate) - **필수**
-코드 수정 후 다음 두 가지 테스트를 반드시 통과해야 한다.
+## 2. 작업 파이프라인: The Triple-Lock Check (강제)
+수정 후 다음 3단계를 통과해야 한다.
+1. **[Style Lock]**: `python scripts/auto_fix.py [파일]` (들여쓰기 교정)
+2. **[Logic Lock]**: `python -m ruff check [파일]` (논리 결함 제거)
+3. **[Syntax Lock]**: `python -m compileall [파일]` (구문 무결성 증명)
 
-1.  **정적 분석 (Static Analysis)**
-    - 명령: `python -m pyflakes [수정된 파일들]`
-    - 기준: Syntax Error, NameError, Import Error **0건**.
-2.  **기능 시뮬레이션 (Simulation)**
-    - 명령: `python tests/test_flow_wealth.py` (또는 해당 기능의 Test Script)
-    - 기준: **ALL TESTS PASSED** 로그 확보.
+## 3. 데이터 및 로직 무결성 (Integrity)
+- **Logic SSOT**: 계산 로직은 단 하나의 파일(`quant_engine.py`)에서만 정의한다.
+- **Professional Tone**: 금융 리서치 리포트 작성 시 게임 용어 배제 및 전문 용어 사용.
+- **Data Fallback**: 시장 데이터가 0일 경우, 내부 보유 데이터를 교차 검증용으로 사용.
 
-## 4. 작업 완결성 리포트 (Final Ritual)
-위 Hard Gate를 통과한 경우에만 작성한다.
+## 4. 🚨 자동화 검증 (The Hard Gate) - [RESTORED]
+1. **정적 분석**: `pyflakes` 또는 `ruff` 문법 검사 0건.
+2. **기능 시뮬레이션**: `python tests/test_flow_wealth.py` 등 테스트 스크립트 실행.
+3. **기능적 완결성 검증**: `codebase_investigator`를 통해 `plan.md` 요구사항 100% 충족 확인.
 
+## 5. 🛠️ 강력한 도구 활용 (Extensions Policy) - [RESTORED]
+- **Deep Research**: 복잡한 시장 분석 시 `research_start` 필수 사용.
+- **Code Audit**: 구조적 결함 조사 시 `codebase_investigator` 필수 사용.
+- **Web Search**: 실시간 지식 보강 시 `web_search_exa` 적극 활용.
+
+## 6. 작업 완결성 리포트 (Final Ritual) - [RESTORED]
 | 단계 | 항목 | 상태 | 증거 (로그/결과값) |
 | :--- | :--- | :---: | :--- |
-| **규칙** | 폴더구조/코딩컨벤션 준수 | - | (확인된 규칙 명시) |
-| **정적** | pyflakes 문법 검사 | - | (Clean 로그 첨부) |
-| **동적** | AppTest 시뮬레이션 | - | (PASS 로그 첨부) |
-| **기능** | 요구사항 구현 완성도 | - | (구현된 핵심 기능 나열) |
-
-**경고: 위 체크리스트의 증거가 '에이전트의 말'이 아닌 '쉘 명령어 실행 결과'여야 한다.**
+| **규칙** | Zero Regression 준수 | - | (Section Lock 확인 결과) |
+| **정적** | Triple-Lock 통과 | - | (ruff/compileall 로그) |
+| **동적** | Hard Gate 통과 | - | (Test Script 결과) |
+| **기능** | 요구사항 완결도 | - | (Traceability Matrix) |
