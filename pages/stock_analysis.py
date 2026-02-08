@@ -13,6 +13,7 @@ from skills.market_screener import MarketScreener
 from skills.news_manager import NewsManager
 from skills.research_engine import ResearchEngine
 from skills.ticker_search import TickerSearchEngine
+from skills.news_analyzer import get_analyst_ratings, analyze_news_sentiment
 from pages.style_utils import load_custom_css
 
 # Import Analysis Modules
@@ -61,7 +62,7 @@ def render_stock_analysis():
                     st.rerun()
                 else:
                     st.error("동기화 실패")
-        
+
         # 보유 종목 리스트 미리보기 (디버깅용)
         state = orchestrator.read_state()
         holdings = state.get("data", {}).get("portfolio", {}).get("holdings", [])
@@ -156,16 +157,93 @@ def render_stock_analysis():
         render_fundamental_tab(ticker_only, screener, extra, last_p, owned)
 
     with tab4:
-        st.markdown(f"#### 📰 {ticker_only} 관련 주요 소식")
+        st.markdown(f"#### 📰 {ticker_only} 전략적 심리 및 컨센서스")
+
+        # 1. Analyst & Sentiment Summary (Investing.com Style)
+        analyst_data = get_analyst_ratings(ticker_only)
         news_manager = NewsManager(orchestrator)
         news_key = f"news_{ticker_only}"
+
+        if news_key not in st.session_state:
+            with st.spinner("최신 뉴스 분석 중..."):
+                st.session_state[news_key] = news_manager.fetch_ticker_news(ticker_only)
+        ticker_news = st.session_state[news_key]
+
+        # Aggregate Sentiment Calculation
+        agg_sentiment = analyze_news_sentiment(
+            [{"title": n["headline"]} for n in ticker_news], ticker_only
+        )
+
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            consensus = analyst_data.get("consensus", "N/A")
+            color_map = {
+                "Buy": "#FF4B4B",
+                "Strong Buy": "#FF4B4B",
+                "Sell": "#3182F6",
+                "Strong Sell": "#3182F6",
+                "Hold": "#8B949E",
+            }
+            c_color = color_map.get(consensus, "white")
+
+            st.markdown(
+                f"""
+                <div class='glass-card' style='padding:15px; text-align:center;'>
+                    <div style='font-size:0.9rem; color:#8B949E;'>애널리스트 컨센서스</div>
+                    <div style='font-size:1.8rem; font-weight:bold; color:{c_color};'>{consensus}</div>
+                    <div style='font-size:0.8rem; margin-top:5px;'>총 {analyst_data.get("total_analysts", 0)}명 참여</div>
+                </div>
+            """,
+                unsafe_allow_html=True,
+            )
+
+        with col_c2:
+            st.markdown(
+                f"""
+                <div class='glass-card' style='padding:15px; text-align:center;'>
+                    <div style='font-size:0.9rem; color:#8B949E;'>최근 뉴스 심리 (Exa AI)</div>
+                    <div style='font-size:1.8rem; font-weight:bold;'>{agg_sentiment}</div>
+                    <div style='font-size:0.8rem; margin-top:5px;'>최근 {len(ticker_news)}건 분석 결과</div>
+                </div>
+            """,
+                unsafe_allow_html=True,
+            )
+
+        if analyst_data.get("status") == "success":
+            target_mean = analyst_data.get("target_mean", 0)
+            target_high = analyst_data.get("target_high", 0)
+            target_low = analyst_data.get("target_low", 0)
+            upside_val = analyst_data.get("upside_pct", 0)
+            up_color = "#FF4B4B" if upside_val > 0 else "#3182F6"
+
+            st.markdown(
+                f"""
+                <div class='glass-card' style='padding:15px; margin-top:15px;'>
+                    <div style='display:flex; justify-content:space-between; align-items:center;'>
+                        <span style='font-size:1rem; font-weight:bold;'>🎯 목표 주가 (12개월)</span>
+                        <span style='font-size:1.2rem; font-weight:bold; color:{up_color};'>Upside {upside_val:+.1f}%</span>
+                    </div>
+                    <div style='display:flex; justify-content:space-between; margin-top:10px; font-size:0.85rem; color:#8B949E;'>
+                        <span>최저 {cur_sym}{target_low:{p_fmt}}</span>
+                        <span>평균 {cur_sym}{target_mean:{p_fmt}}</span>
+                        <span>최고 {cur_sym}{target_high:{p_fmt}}</span>
+                    </div>
+                    <div style='height:8px; background:#161B22; border-radius:4px; margin-top:8px; position:relative;'>
+                        <div style='position:absolute; left:0%; width:100%; height:100%; background:linear-gradient(90deg, #3182F6, #FF4B4B); opacity:0.3; border-radius:4px;'></div>
+                        <div style='position:absolute; left:{(last_p - target_low) / (target_high - target_low) * 100 if (target_high - target_low) > 0 else 50}%; width:4px; height:120%; background:white; top:-10%; box-shadow:0 0 5px white;'></div>
+                    </div>
+                    <div style='text-align:center; font-size:0.75rem; color:#8B949E; margin-top:5px;'>현재가 위치 ({cur_sym}{last_p:{p_fmt}})</div>
+                </div>
+            """,
+                unsafe_allow_html=True,
+            )
+
+        st.divider()
+        st.markdown("#### 📰 실시간 뉴스 타임라인")
         if st.button("🔄 뉴스 갱신", key="force_news"):
             del st.session_state[news_key]
             st.rerun()
-        if news_key not in st.session_state:
-            with st.spinner("정보 수집 중..."):
-                st.session_state[news_key] = news_manager.fetch_ticker_news(ticker_only)
-        ticker_news = st.session_state[news_key]
+
         if ticker_news:
             for n in ticker_news:
                 st.markdown(
@@ -177,25 +255,110 @@ def render_stock_analysis():
 
     with tab5:
         st.markdown("#### 🤖 AI 전문가 협의체 보고서")
+
+        # 1. Report Status & Metadata Display
+        research_key = f"research_{ticker_only}"
+
         if st.button(
-            "🚀 전문가 토론 리포트 생성",
+            "🚀 전문가 토론 리포트 생성/갱신",
             key="btn_generate_report",
             use_container_width=True,
             type="primary",
         ):
-            with st.spinner("분석 중..."):
-                pdf_bytes = research.get_report_with_cache(ticker_only)
-                if pdf_bytes:
-                    st.download_button(
-                        "📥 PDF 분석서 다운로드",
-                        pdf_bytes,
-                        f"OMNI_Analysis_{ticker_only}.pdf",
-                        "application/pdf",
-                        use_container_width=True,
-                    )
-                    st.success("리포트 생성이 완료되었습니다.")
-                else:
-                    st.error("리포트 생성에 실패했습니다.")
+            with st.spinner("전문가 위원회 소집 및 토론 중..."):
+                st.session_state[research_key] = research.get_report_with_cache(
+                    ticker_only, force_refresh=True
+                )
+
+        # Display cached result if available
+        if research_key not in st.session_state:
+            # Try to load from cache without force refresh
+            res = research.get_report_with_cache(ticker_only)
+            if res:
+                st.session_state[research_key] = res
+
+        if research_key in st.session_state:
+            res = st.session_state[research_key]
+            pdf_bytes = res.get("pdf")
+            meta = res.get("metadata", {})
+
+            # 1. Top Briefing (Verdict & Portfolio Advice)
+            v_color = (
+                "#FF4B4B"
+                if "BUY" in meta.get("verdict", "")
+                else "#3182F6"
+                if "SELL" in meta.get("verdict", "")
+                else "#8B949E"
+            )
+
+            col_v1, col_v2 = st.columns([1, 2])
+            with col_v1:
+                st.markdown(
+                    f"""
+                    <div class='glass-card' style='padding:20px; border-left: 10px solid {v_color}; text-align:center;'>
+                        <div style='font-size:0.9rem; color:#8B949E;'>최종 투자의견</div>
+                        <div style='font-size:2.2rem; font-weight:bold; color:{v_color};'>{meta.get("verdict", "N/A")}</div>
+                    </div>
+                """,
+                    unsafe_allow_html=True,
+                )
+
+            with col_v2:
+                st.markdown(
+                    f"""
+                    <div class='glass-card' style='padding:20px; border-left: 5px solid #FFD700;'>
+                        <div style='font-size:0.9rem; color:#8B949E;'>🛡️ 마스터 포트폴리오 조언</div>
+                        <div style='font-size:1.05rem; font-weight:bold; margin-top:5px;'>{meta.get("portfolio_advice", "N/A")}</div>
+                    </div>
+                """,
+                    unsafe_allow_html=True,
+                )
+
+            # 2. Key Action Strategy
+            st.markdown(
+                f"""
+                <div class='glass-card' style='padding:20px; margin-top:15px; background:rgba(49, 130, 246, 0.05);'>
+                    <div style='font-size:0.9rem; color:#8B949E; margin-bottom:10px;'>🎯 핵심 대응 전략 (Action Plan)</div>
+                    <div style='font-size:1.1rem; line-height:1.6;'>{meta.get("action_plan", "N/A")}</div>
+                </div>
+            """,
+                unsafe_allow_html=True,
+            )
+
+            # 3. Detailed Debate (The Clash)
+            with st.expander("🏛️ 위원회 끝장 토론 상세 및 논쟁점 보기", expanded=False):
+                st.markdown(
+                    f"""
+                    <div style='background:rgba(255,255,255,0.03); padding:15px; border-radius:10px;'>
+                        <div style='font-size:0.9rem; color:#8B949E; margin-bottom:5px;'>🔥 핵심 논쟁점 (Battle Ground)</div>
+                        <div style='font-size:1.1rem; font-weight:bold; color:#FF4B4B;'>{meta.get("battle_ground", "N/A")}</div>
+                    </div>
+                    <div style='margin-top:15px;'>
+                        <div style='font-size:0.9rem; color:#8B949E; margin-bottom:5px;'>💡 위원회 토론 요약</div>
+                        <div style='font-size:1rem; line-height:1.6;'>{meta.get("ai_summary", "N/A")}</div>
+                    </div>
+                    <div style='margin-top:15px;'>
+                        <div style='font-size:0.9rem; color:#8B949E; margin-bottom:5px;'>⚖️ 최종 결정 근거</div>
+                        <div style='font-size:0.95rem; color:#C9D1D9;'>{meta.get("reason", "N/A")}</div>
+                    </div>
+                """,
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            if pdf_bytes:
+                st.download_button(
+                    "📥 상세 PDF 리포트 다운로드 (전문가 버전)",
+                    pdf_bytes,
+                    f"OMNI_Analysis_{ticker_only}.pdf",
+                    "application/pdf",
+                    use_container_width=True,
+                )
+        else:
+            st.info(
+                "전문가 리포트가 생성되지 않았습니다. 위 버튼을 눌러 분석을 시작하십시오."
+            )
 
 
 if __name__ == "__main__":

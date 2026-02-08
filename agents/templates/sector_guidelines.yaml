@@ -1,0 +1,31 @@
+# OMNI Sector Guidelines: Industry-Specific Analytical Frameworks
+# Used by CouncilManager to provide contextual 'Edge' to the AI Council.
+
+Asset-Light:
+  description: "Software, SaaS, and Design-focused technology companies with high margins."
+  focus_metrics: ["PEG Ratio", "Forward P/E", "SBC Ratio (Stock-Based Compensation)", "Revenue Growth"]
+  narrative: >
+    "이익의 절대치보다 매출 성장 가속화(Top-line Growth)와 시장 지배력 확대가 핵심입니다. 
+    단순 TTM PE보다는 향후 12개월 수익성을 반영한 Forward PE와 성장성 대비 가격(PEG)을 우선순위로 두십시오.
+    특히 매출 대비 주식보상비용(SBC) 비중이 높아 실질 현금 흐름을 왜곡하는지 집요하게 파악하십시오."
+
+Asset-Heavy:
+  description: "Manufacturing, Infrastructure, and Traditional Industry with significant physical assets."
+  focus_metrics: ["P/B Ratio", "Debt-to-Equity", "Operating Cash Flow", "Asset Turnover"]
+  narrative: >
+    "장부 가치(Book Value)와 배당 수익률, 그리고 안정적인 현금 흐름이 중요합니다.
+    P/B 밴드를 기준으로 역사적 저점과 고점을 판단하되, 설비 투자(CAPEX) 주기가 수익성으로 전환되는 시점인지 분석하십시오."
+
+Hybrid-Memory:
+  description: "Memory semiconductor companies (Samsung, SK Hynix, Micron) facing structural changes."
+  focus_metrics: ["P/B Ratio", "Inventory Ratio", "HBM (High Bandwidth Memory) Market Share", "Cycle Stage"]
+  narrative: >
+    "반도체 섹터는 현재 AI 서버 수요(HBM)로 인해 전통적인 시클리컬(Cyclical) 산업에서 '구조적 성장주'로 성격이 변모하는 재평가(Re-rating) 국면에 있습니다. 
+    따라서 단순히 과거의 P/B 상단선에 도달했다는 이유만으로 고평가라 결론짓지 마십시오.
+    AI 필수재로서의 HBM 점유율과 기술 격차가 '성장 프리미엄'을 정당화하는지 적극적으로 토론하십시오."
+
+General:
+  description: "Default framework for unclassified or diverse sectors."
+  focus_metrics: ["Trailing P/E", "ROE", "Current Ratio", "Market Cap"]
+  narrative: >
+    "전통적인 가치와 성장 지표를 균형 있게 참조하십시오. 섹터 내 Peer 그룹 대비 상대적 매력도를 우선적으로 검토하십시오."

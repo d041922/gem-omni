@@ -69,7 +69,7 @@ class DataOrchestrator:
             p_df, _, _ = load_data_from_gsheet("GEM_Finance_Portfolio")
             if p_df is None or p_df.empty:
                 return False
-            
+
             holdings = []
             COL_TICKER = "종목코드"
             COL_QTY = "수량"
@@ -79,7 +79,14 @@ class DataOrchestrator:
 
             def clean_num(val):
                 try:
-                    s = str(val).replace("$", "").replace(",", "").replace("%", "").replace("₩", "").strip()
+                    s = (
+                        str(val)
+                        .replace("$", "")
+                        .replace(",", "")
+                        .replace("%", "")
+                        .replace("₩", "")
+                        .strip()
+                    )
                     return float(s) if s else 0.0
                 except (ValueError, TypeError):
                     return 0.0
@@ -88,27 +95,33 @@ class DataOrchestrator:
                 ticker = str(row.get(COL_TICKER, "")).strip().upper()
                 if not ticker or ticker == "CASH":
                     continue
-                
+
                 qty = clean_num(row.get(COL_QTY, 0))
                 if qty <= 0:
                     continue
 
                 avg_usd = clean_num(row.get(COL_AVG_USD, 0))
                 avg_krw = clean_num(row.get(COL_AVG_KRW, 0))
-                
-                is_kr = ".KS" in ticker or ".KQ" in ticker or (ticker.isdigit() and len(ticker) == 6)
+
+                is_kr = (
+                    ".KS" in ticker
+                    or ".KQ" in ticker
+                    or (ticker.isdigit() and len(ticker) == 6)
+                )
                 avg_price = avg_krw if is_kr else avg_usd
                 cur_sym = "₩" if is_kr else "$"
 
-                holdings.append({
-                    "ticker": ticker,
-                    "quantity": qty,
-                    "average_price": avg_price,
-                    "current_price": 0.0,
-                    "profit_rate": clean_num(row.get(COL_PROFIT, 0)),
-                    "currency_symbol": cur_sym,
-                })
-            
+                holdings.append(
+                    {
+                        "ticker": ticker,
+                        "quantity": qty,
+                        "average_price": avg_price,
+                        "current_price": 0.0,
+                        "profit_rate": clean_num(row.get(COL_PROFIT, 0)),
+                        "currency_symbol": cur_sym,
+                    }
+                )
+
             # 요약 정보 계산 (평단가 합계 기준 - 현재가는 0이므로)
             stock_cost_krw = 0.0
             for h in holdings:
@@ -121,8 +134,8 @@ class DataOrchestrator:
                 "holdings": holdings,
                 "summary": {
                     "total_cost_krw": stock_cost_krw,
-                    "last_updated": datetime.now(timezone.utc).isoformat()
-                }
+                    "last_updated": datetime.now(timezone.utc).isoformat(),
+                },
             }
             return self.update_state("portfolio", portfolio_data)
         except Exception:
@@ -132,10 +145,10 @@ class DataOrchestrator:
         """통합 데이터 수집 및 포트폴리오 병합"""
         state = self.read_state()
         holdings = state.get("data", {}).get("portfolio", {}).get("holdings", [])
-        
+
         def normalize(t):
             return str(t).split(".")[0].upper().strip()
-        
+
         search_norm = normalize(ticker)
         holding_info = next(
             (h for h in holdings if normalize(h.get("ticker", "")) == search_norm),
@@ -156,7 +169,11 @@ class DataOrchestrator:
         if holding_info:
             holding_info["current_price"] = last_price
             if holding_info["average_price"] > 0 and last_price > 0:
-                holding_info["profit_rate"] = ((last_price - holding_info["average_price"]) / holding_info["average_price"] * 100)
+                holding_info["profit_rate"] = (
+                    (last_price - holding_info["average_price"])
+                    / holding_info["average_price"]
+                    * 100
+                )
 
         extra_stats = {}
         try:
@@ -165,7 +182,11 @@ class DataOrchestrator:
             if pe_val is None:
                 try:
                     income_stmt = t_obj.quarterly_income_stmt
-                    if income_stmt is not None and not income_stmt.empty and "Diluted EPS" in income_stmt.index:
+                    if (
+                        income_stmt is not None
+                        and not income_stmt.empty
+                        and "Diluted EPS" in income_stmt.index
+                    ):
                         recent_eps = income_stmt.loc["Diluted EPS"].iloc[:4].sum()
                         if recent_eps > 0:
                             pe_val = last_price / recent_eps
@@ -192,24 +213,99 @@ class DataOrchestrator:
             except Exception:
                 pass
 
+            # [GES v4.1] Data Extraction for Research Engine & Fundamental Tab
+            info = t_obj.info
+
+            # 1. Market Cap & Dividend (New Additions)
+            mkt_cap = info.get("marketCap")
+            div_yield = info.get("dividendYield")
+
+            # 2. Valuation Logic (Restored)
+            pe_val = info.get("trailingPE")
+            if pe_val is None:
+                try:
+                    income_stmt = t_obj.quarterly_income_stmt
+                    if (
+                        income_stmt is not None
+                        and not income_stmt.empty
+                        and "Diluted EPS" in income_stmt.index
+                    ):
+                        recent_eps = income_stmt.loc["Diluted EPS"].iloc[:4].sum()
+                        if recent_eps > 0:
+                            pe_val = last_price / recent_eps
+                except Exception:
+                    pass
+
+            eps_g = info.get("earningsQuarterlyGrowth")
+            peg_val = info.get("pegRatio")
+            if peg_val is None and pe_val and eps_g and eps_g > 0:
+                peg_val = pe_val / (eps_g * 100)
+
+            # 3. Financials & Health (Restored)
+            fcf_val = info.get("freeCashflow")
+            current_ratio = info.get("currentRatio")
+            sbc_val, capex_val = 0, 0
+            try:
+                cf = t_obj.quarterly_cashflow
+                if cf is not None and not cf.empty:
+                    if "Stock Based Compensation" in cf.index:
+                        sbc_val = cf.loc["Stock Based Compensation"].iloc[0]
+                    if "Capital Expenditure" in cf.index:
+                        capex_val = cf.loc["Capital Expenditure"].iloc[0]
+                    if fcf_val is None and "Free Cash Flow" in cf.index:
+                        fcf_val = cf.loc["Free Cash Flow"].iloc[0]
+            except Exception:
+                pass
+
             extra_stats = {
-                "profile": {"sector": info.get("sector"), "industry": info.get("industry"), "business_model": "Unknown"},
-                "financials": {
-                    "roe": info.get("returnOnEquity"), "gross_margin": info.get("grossMargins"),
-                    "fcf": fcf_val, "sbc": sbc_val, "capex": capex_val,
-                    "net_income": info.get("netIncomeToCommon"), "inventory": info.get("inventory"),
-                    "total_rev": info.get("totalRevenue")
+                "profile": {
+                    "sector": info.get("sector", "N/A"),
+                    "industry": info.get("industry", "N/A"),
+                    "business_model": info.get("longBusinessSummary", "N/A")[:200]
+                    + "...",
                 },
-                "growth": {"rev_growth": info.get("revenueGrowth"), "peg_ratio": peg_val},
-                "valuation": {"trailing_pe": pe_val, "forward_pe": info.get("forwardPE"), "pb_ratio": info.get("priceToBook")},
-                "health": {"debt_to_equity": info.get("debtToEquity"), "current_ratio": current_ratio},
-                "events": {"next_earnings": info.get("nextEarningsDate")},
+                "financials": {
+                    "market_cap": mkt_cap,  # Added
+                    "dividend_yield": div_yield,  # Added
+                    "roe": info.get("returnOnEquity"),
+                    "gross_margin": info.get("grossMargins"),
+                    "fcf": fcf_val,  # Restored
+                    "sbc": sbc_val,  # Restored
+                    "capex": capex_val,  # Restored
+                    "net_income": info.get("netIncomeToCommon"),
+                    "inventory": info.get("inventory"),  # Restored
+                    "total_rev": info.get("totalRevenue"),
+                },
+                "growth": {
+                    "rev_growth": info.get("revenueGrowth"),
+                    "peg_ratio": peg_val,  # Restored
+                },
+                "valuation": {
+                    "trailing_pe": pe_val,
+                    "forward_pe": info.get("forwardPE"),
+                    "pb_ratio": info.get("priceToBook"),
+                },
+                "health": {
+                    "debt_to_equity": info.get("debtToEquity"),  # Restored
+                    "current_ratio": current_ratio,  # Restored
+                },
+                "events": {
+                    "next_earnings": info.get("nextEarningsDate"),
+                    "dividend_yield": div_yield,  # Backward compatibility
+                },
             }
-        except Exception:
+        except Exception as e:
+            print(f"DataOrchestrator Error for {ticker}: {e}")
             pass
 
         return {
-            "ticker": ticker, "last_price": last_price, "history": history_data,
-            "holding_info": holding_info, "is_owned": holding_info is not None,
-            "is_ready": len(history_data) > 0, "extra_stats": extra_stats, "market_context": {"change_pct": 0.0},
+            "ticker": ticker,
+            "name": info.get("longName", ticker) if "info" in locals() else ticker,
+            "last_price": last_price,
+            "history": history_data,
+            "holding_info": holding_info,
+            "is_owned": holding_info is not None,
+            "is_ready": len(history_data) > 0,
+            "extra_stats": extra_stats,
+            "market_context": {"change_pct": 0.0},
         }

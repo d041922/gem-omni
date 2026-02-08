@@ -87,24 +87,34 @@ def load_data_from_gsheet(spreadsheet_name: str) -> Tuple[pd.DataFrame, pd.DataF
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 def save_audit_log(spreadsheet_name: str, log_data: Dict):
-    """분석 로그 저장"""
+    """[GES v4.1] 분석 로그 영구 저장 (GSheet Audit Trail)"""
     gc = get_gspread_client()
     if not gc:
+        print("[DEBUG] GSheet Client not available for logging.")
         return
     try:
         ss = gc.open(spreadsheet_name)
+        # AnalysisLogs 워크시트 우선 사용, 없으면 생성
         try:
-            ws = ss.worksheet("AuditLogs")
+            ws = ss.worksheet("AnalysisLogs")
         except Exception:
-            ws = ss.add_worksheet(title="AuditLogs", rows="1000", cols="10")
+            try:
+                ws = ss.add_worksheet(title="AnalysisLogs", rows="2000", cols="10")
+                # 헤더 추가
+                ws.append_row(["Timestamp", "Summary", "Action Plan", "Details/Metadata"])
+            except Exception:
+                # 권한 이슈 등으로 생성 실패 시 기본 AuditLogs 시도
+                ws = ss.worksheet("AuditLogs")
         
         ws.append_row([
-            datetime.now().isoformat(), 
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
             str(log_data.get('summary', '')), 
             str(log_data.get('actions', '')), 
             str(log_data.get('decisions', ''))
         ])
-    except Exception:
+        print(f"[DEBUG] Log appended to {ws.title}")
+    except Exception as e:
+        print(f"[DEBUG] GSheet Logging failed: {e}")
         pass
 
 def load_recent_logs(spreadsheet_name: str, limit: int = 5):
