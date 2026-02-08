@@ -1,11 +1,13 @@
 """
-GEM: OMNI Data Orchestrator (v4.1 - Clean & Precise)
+GEM: OMNI Data Orchestrator (v4.2 - SSOT & Caching)
 Google Engineering Standard compliant code for portfolio integration.
-Removed unused imports and fixed style guide violations.
+Ensures Single Source of Truth via global Streamlit caching.
 """
 
 import json
 import os
+import streamlit as st
+import pandas as pd
 from datetime import datetime, timezone
 from typing import Dict, Any
 import yfinance as yf
@@ -14,6 +16,30 @@ try:
     from skills.gsheet_loader import load_data_from_gsheet
 except ImportError:
     load_data_from_gsheet = None
+
+
+@st.cache_data(ttl=3600)
+def fetch_ticker_raw_data(ticker: str) -> Dict[str, Any]:
+    """[SSOT] yfinance 데이터를 전역 캐싱하여 UI와 AI 엔진 간의 데이터 일관성 보장"""
+    try:
+        t_obj = yf.Ticker(ticker)
+        hist = t_obj.history(period="1y")
+        if hist.empty:
+            return {}
+
+        return {
+            "history": hist.to_dict(),
+            "info": t_obj.info,
+            "income_stmt": t_obj.quarterly_income_stmt.to_dict()
+            if t_obj.quarterly_income_stmt is not None
+            else {},
+            "cashflow": t_obj.quarterly_cashflow.to_dict()
+            if t_obj.quarterly_cashflow is not None
+            else {},
+        }
+    except Exception as e:
+        print(f"[DataOrchestrator] Raw Fetch Error for {ticker}: {e}")
+        return {}
 
 
 class DataOrchestrator:
@@ -142,7 +168,7 @@ class DataOrchestrator:
             return False
 
     def get_full_ticker_data(self, ticker: str) -> Dict[str, Any]:
-        """통합 데이터 수집 및 포트폴리오 병합"""
+        """[SSOT] 통합 데이터 수집 및 포트폴리오 병합 (캐싱 활용)"""
         state = self.read_state()
         holdings = state.get("data", {}).get("portfolio", {}).get("holdings", [])
 
@@ -155,16 +181,14 @@ class DataOrchestrator:
             None,
         )
 
-        history_data = {}
-        last_price = 0.0
-        try:
-            t_obj = yf.Ticker(ticker)
-            hist = t_obj.history(period="1y")
-            if not hist.empty:
-                history_data = hist.to_dict()
-                last_price = round(float(hist["Close"].iloc[-1]), 2)
-        except Exception:
-            pass
+        # [SSOT] 캐시된 원천 데이터 가져오기
+        raw_data = fetch_ticker_raw_data(ticker)
+        if not raw_data:
+            return {"ticker": ticker, "is_ready": False}
+
+        history_dict = raw_data.get("history", {})
+        df = pd.DataFrame.from_dict(history_dict)
+        last_price = round(float(df["Close"].iloc[-1]), 2) if not df.empty else 0.0
 
         if holding_info:
             holding_info["current_price"] = last_price
@@ -177,135 +201,112 @@ class DataOrchestrator:
 
         extra_stats = {}
         try:
-            info = t_obj.info
+            info = raw_data.get("info", {})
+            income_stmt = pd.DataFrame.from_dict(raw_data.get("income_stmt", {}))
+            cashflow = pd.DataFrame.from_dict(raw_data.get("cashflow", {}))
+
             pe_val = info.get("trailingPE")
-            if pe_val is None:
-                try:
-                    income_stmt = t_obj.quarterly_income_stmt
-                    if (
-                        income_stmt is not None
-                        and not income_stmt.empty
-                        and "Diluted EPS" in income_stmt.index
-                    ):
-                        recent_eps = income_stmt.loc["Diluted EPS"].iloc[:4].sum()
-                        if recent_eps > 0:
-                            pe_val = last_price / recent_eps
-                except Exception:
-                    pass
+            if (
+                pe_val is None
+                and not income_stmt.empty
+                and "Diluted EPS" in income_stmt.index
+            ):
+                recent_eps = income_stmt.loc["Diluted EPS"].iloc[:4].sum()
+                if recent_eps > 0:
+                    pe_val = last_price / recent_eps
 
             eps_g = info.get("earningsQuarterlyGrowth")
             peg_val = info.get("pegRatio")
-            if peg_val is None and pe_val and eps_g and eps_g > 0:
+
+            # [SSOT] Fallback Calculation for PEG
+            if (peg_val is None or peg_val == 0) and pe_val and eps_g and eps_g > 0:
                 peg_val = pe_val / (eps_g * 100)
+                print(f"[DataOrchestrator] Computed PEG for {ticker}: {peg_val:.2f}")
 
+            # SBC, FCF & CFO Restored from raw data
             fcf_val = info.get("freeCashflow")
-            current_ratio = info.get("currentRatio")
-            sbc_val, capex_val = 0, 0
-            try:
-                cf = t_obj.quarterly_cashflow
-                if cf is not None and not cf.empty:
-                    if "Stock Based Compensation" in cf.index:
-                        sbc_val = cf.loc["Stock Based Compensation"].iloc[0]
-                    if "Capital Expenditure" in cf.index:
-                        capex_val = cf.loc["Capital Expenditure"].iloc[0]
-                    if fcf_val is None and "Free Cash Flow" in cf.index:
-                        fcf_val = cf.loc["Free Cash Flow"].iloc[0]
-            except Exception:
-                pass
+            if (
+                fcf_val is None
+                and not cashflow.empty
+                and "Free Cash Flow" in cashflow.index
+            ):
+                fcf_val = cashflow.loc["Free Cash Flow"].iloc[0]
 
-            # [GES v4.1] Data Extraction for Research Engine & Fundamental Tab
-            info = t_obj.info
+            cfo_val = info.get("operatingCashflow")
+            if (
+                cfo_val is None
+                and not cashflow.empty
+                and "Operating Cash Flow" in cashflow.index
+            ):
+                cfo_val = cashflow.loc["Operating Cash Flow"].iloc[0]
 
-            # 1. Market Cap & Dividend (New Additions)
-            mkt_cap = info.get("marketCap")
+            sbc_val = 0
+            if not cashflow.empty and "Stock Based Compensation" in cashflow.index:
+                sbc_val = cashflow.loc["Stock Based Compensation"].iloc[0]
+
+            # [Data Guard] Outlier Filtering
             div_yield = info.get("dividendYield")
-
-            # 2. Valuation Logic (Restored)
-            pe_val = info.get("trailingPE")
-            if pe_val is None:
-                try:
-                    income_stmt = t_obj.quarterly_income_stmt
-                    if (
-                        income_stmt is not None
-                        and not income_stmt.empty
-                        and "Diluted EPS" in income_stmt.index
-                    ):
-                        recent_eps = income_stmt.loc["Diluted EPS"].iloc[:4].sum()
-                        if recent_eps > 0:
-                            pe_val = last_price / recent_eps
-                except Exception:
-                    pass
-
-            eps_g = info.get("earningsQuarterlyGrowth")
-            peg_val = info.get("pegRatio")
-            if peg_val is None and pe_val and eps_g and eps_g > 0:
-                peg_val = pe_val / (eps_g * 100)
-
-            # 3. Financials & Health (Restored)
-            fcf_val = info.get("freeCashflow")
-            current_ratio = info.get("currentRatio")
-            sbc_val, capex_val = 0, 0
-            try:
-                cf = t_obj.quarterly_cashflow
-                if cf is not None and not cf.empty:
-                    if "Stock Based Compensation" in cf.index:
-                        sbc_val = cf.loc["Stock Based Compensation"].iloc[0]
-                    if "Capital Expenditure" in cf.index:
-                        capex_val = cf.loc["Capital Expenditure"].iloc[0]
-                    if fcf_val is None and "Free Cash Flow" in cf.index:
-                        fcf_val = cf.loc["Free Cash Flow"].iloc[0]
-            except Exception:
-                pass
+            if div_yield and div_yield > 0.20:  # 20% 이상 배당은 오류일 가능성 높음
+                print(
+                    f"[DataOrchestrator] Suspicious Dividend Yield {div_yield:.2%} -> Ignored"
+                )
+                div_yield = None
 
             extra_stats = {
                 "profile": {
                     "sector": info.get("sector", "N/A"),
                     "industry": info.get("industry", "N/A"),
-                    "business_model": info.get("longBusinessSummary", "N/A")[:200]
-                    + "...",
+                    "full_summary": info.get("longBusinessSummary", "N/A"),
+                    "website": info.get("website", "N/A"),
+                    "employees": info.get("fullTimeEmployees", "N/A"),
+                    "location": f"{info.get('city', '')}, {info.get('country', '')}",
+                    "logo_url": f"https://logo.clearbit.com/{info.get('website', '').replace('http://', '').replace('https://', '').split('/')[0]}"
+                    if info.get("website")
+                    else None,
                 },
                 "financials": {
-                    "market_cap": mkt_cap,  # Added
-                    "dividend_yield": div_yield,  # Added
+                    "market_cap": info.get("marketCap"),
+                    "dividend_yield": div_yield,
                     "roe": info.get("returnOnEquity"),
+                    "roa": info.get("returnOnAssets"),
                     "gross_margin": info.get("grossMargins"),
-                    "fcf": fcf_val,  # Restored
-                    "sbc": sbc_val,  # Restored
-                    "capex": capex_val,  # Restored
+                    "fcf": fcf_val,
+                    "cfo": cfo_val,
+                    "sbc": sbc_val,
                     "net_income": info.get("netIncomeToCommon"),
-                    "inventory": info.get("inventory"),  # Restored
+                    "inventory": info.get("inventory"),
                     "total_rev": info.get("totalRevenue"),
                 },
                 "growth": {
                     "rev_growth": info.get("revenueGrowth"),
-                    "peg_ratio": peg_val,  # Restored
+                    "peg_ratio": peg_val,
                 },
                 "valuation": {
                     "trailing_pe": pe_val,
                     "forward_pe": info.get("forwardPE"),
+                    "ps_ratio": info.get("priceToSalesTrailing12Months"),
                     "pb_ratio": info.get("priceToBook"),
                 },
                 "health": {
-                    "debt_to_equity": info.get("debtToEquity"),  # Restored
-                    "current_ratio": current_ratio,  # Restored
+                    "debt_to_equity": info.get("debtToEquity"),
+                    "current_ratio": info.get("currentRatio"),
                 },
                 "events": {
                     "next_earnings": info.get("nextEarningsDate"),
-                    "dividend_yield": div_yield,  # Backward compatibility
+                    "dividend_yield": info.get("dividendYield"),
                 },
             }
         except Exception as e:
-            print(f"DataOrchestrator Error for {ticker}: {e}")
-            pass
+            print(f"[DataOrchestrator] Extra Stats Error: {e}")
 
         return {
             "ticker": ticker,
-            "name": info.get("longName", ticker) if "info" in locals() else ticker,
+            "name": info.get("longName", ticker) if "info" in raw_data else ticker,
             "last_price": last_price,
-            "history": history_data,
+            "history": history_dict,
             "holding_info": holding_info,
             "is_owned": holding_info is not None,
-            "is_ready": len(history_data) > 0,
+            "is_ready": True,
             "extra_stats": extra_stats,
             "market_context": {"change_pct": 0.0},
         }

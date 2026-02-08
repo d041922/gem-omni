@@ -1,6 +1,6 @@
 """
-OMNI Research Engine (v2.3)
-Stable Council Debate Engine with Robust Type Guarding.
+OMNI Research Engine (v3.3)
+Stable Council Debate Engine with Robust Type Guarding and Micro-Narratives.
 """
 
 import os
@@ -10,6 +10,7 @@ import streamlit as st
 import google.generativeai as genai
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List
+from collections import Counter
 from skills.reporting_engine import ReportingEngine
 from skills.quant_engine import FactorEngine
 from agents.council_manager import CouncilManager
@@ -44,25 +45,20 @@ class ResearchEngine:
     ) -> Dict[str, Any]:
         """
         [Cognitive Domain] 전문가 토론 리포트 생성 및 캐싱.
-        UI 가시화를 위해 PDF 바이너리와 토론 결과(metadata)를 함께 반환함.
+        UI 가시화를 위해 토론 결과(metadata)를 반환함. (PDF 제거됨)
         """
-        pdf_cache = self._get_cache_path(ticker, "pdf")
         json_cache = self._get_cache_path(ticker, "json")
 
         # 1. 캐시 체크 (Machine Execution)
-        if (
-            not force_refresh
-            and os.path.exists(pdf_cache)
-            and os.path.exists(json_cache)
-        ):
-            mtime = datetime.fromtimestamp(os.path.getmtime(pdf_cache), tz=timezone.utc)
+        if not force_refresh and os.path.exists(json_cache):
+            mtime = datetime.fromtimestamp(
+                os.path.getmtime(json_cache), tz=timezone.utc
+            )
             if datetime.now(timezone.utc) - mtime < timedelta(hours=24):
                 try:
-                    with open(pdf_cache, "rb") as f_pdf:
-                        pdf_data = f_pdf.read()
                     with open(json_cache, "r", encoding="utf-8") as f_json:
                         meta_data = json.load(f_json)
-                    return {"pdf": pdf_data, "metadata": meta_data}
+                    return {"metadata": meta_data}
                 except Exception:
                     pass
 
@@ -78,6 +74,66 @@ class ResearchEngine:
         # 3. 리포트 생성
         result = self.create_unified_report(ticker_info, market_news or [])
         return result
+
+    def get_quick_insight(self, ticker: str, summary_en: str) -> Dict[str, Any]:
+        """[Cognitive] 기업 개요 영구 저장 및 해자 분석 (고정형 캐싱)"""
+        profile_dir = "data/reports/profiles"
+        if not os.path.exists(profile_dir):
+            os.makedirs(profile_dir)
+
+        cache_path = os.path.join(profile_dir, f"{ticker}.json")
+
+        # 1. 영구 캐시 체크 (File I/O)
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+
+        default_res = {
+            "summary_kr": "비즈니스 요약을 생성할 수 없습니다.",
+            "moat": "데이터 부족",
+            "pillars": ["정보 없음"],
+        }
+
+        if not self.gemini_available or not summary_en:
+            return default_res
+
+        # 2. 분석 실행 (해자 구체성 강화)
+        prompt = f"""
+        당신은 노련한 비즈니스 분석가입니다. 아래의 영문 기업 요약을 읽고 마스터를 위해 전략적 기초 정보를 추출하십시오.
+        
+        [Target]: {ticker}
+        [Summary EN]: {summary_en[:2000]}
+        
+        [작성 규정]:
+        - 'summary_kr'은 전체 비즈니스를 관통하는 핵심을 한글 3줄로 요약할 것.
+        - 'moat'는 이 회사가 가진 독보적 기술이나 자산을 반드시 구체적으로 명시할 것. (예: 'CUDA 생태계', '액체 냉각 설계 기술', '정부 계약 독점' 등)
+        - 'pillars'는 분석 시 주요 변수로 삼을 핵심 기술/전략 3가지.
+        
+        반드시 다음 JSON 형식으로 답변하십시오:
+        {{
+            "summary_kr": "...",
+            "moat": "[유형]: [구체적 자산/기술]",
+            "pillars": ["#태그1", "#태그2", "#태그3"]
+        }}
+        """
+        try:
+            response = self.model.generate_content(
+                prompt, generation_config={"response_mime_type": "application/json"}
+            )
+            result = json.loads(
+                re.sub(r"^```json|^```|```$", "", response.text.strip()).strip()
+            )
+
+            # 파일로 박제 (영구 저장)
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump(result, f, ensure_ascii=False, indent=2)
+
+            return result
+        except Exception:
+            return default_res
 
     def _load_previous_history(self, ticker: str) -> str:
         """[Post-Mortem] 최근 30일 이내의 가장 최신 분석 기록 로드"""
@@ -113,12 +169,49 @@ class ResearchEngine:
         except Exception:
             return "HISTORY: Error loading records."
 
+    def _extract_hot_keywords(self, news_items: List[Dict[str, Any]]) -> str:
+        """뉴스 헤드라인에서 빈출 키워드 Top 3 추출 (Micro-Narrative)"""
+        if not news_items:
+            return "N/A"
+
+        text = " ".join([n.get("headline", "") for n in news_items]).lower()
+        # 특수문자 제거 및 단어 분리 (3글자 이상만)
+        words = re.findall(r"\b\w{3,}\b", text)
+        # 무의미한 단어 필터링
+        stop_words = {
+            "the",
+            "and",
+            "for",
+            "with",
+            "stock",
+            "market",
+            "nasdaq",
+            "shares",
+            "prices",
+            "index",
+            "ai",
+            "nvidia",
+            "palantir",
+            "report",
+            "analysis",
+            "quarter",
+            "earnings",
+        }
+        filtered_words = [w for w in words if w not in stop_words]
+
+        counts = Counter(filtered_words)
+        top_3 = [word for word, count in counts.most_common(3)]
+        kw_str = ", ".join(top_3).upper()
+        print(f"[DEBUG] Extracted Hot Keywords: {kw_str}")
+        return kw_str
+
     def _normalize_facts(
         self, ticker: str, details: Dict[str, Any], news_items: List[Dict[str, Any]]
     ) -> str:
-        """[GES v4.1] 데이터를 전문가급 서사 포맷으로 정규화 (RR Ratio & SBC 포함)"""
-        # 0. Sector Context
+        """[GES v4.1] 데이터를 전문가급 서사 포맷으로 정규화 (RR, SBC, PS & Keywords 포함)"""
+        # 0. Sector & Theme Context
         biz_model = details.get("biz_model", "Unknown")
+        hot_keywords = self._extract_hot_keywords(news_items)
 
         # 1. Technicals & Pivots
         rsi = details.get("rsi", "N/A")
@@ -126,54 +219,139 @@ class ResearchEngine:
         trend = "상승(BULL)" if details.get("is_up_trend") else "약세(BEAR/SIDE)"
         h52 = details.get("fifty_two_week_high_dist", 0.0)
 
-        # Pivot & RR Ratio
-        lp = details.get("last_price", 0)
-        s1 = details.get("pivot_s1", 0)
-        r1 = details.get("pivot_r1", 0)
+        # Pivot & RR Ratio [Multi-Timeframe]
+        s1 = details.get("pivot_s1", "N/A")
+        r1 = details.get("pivot_r1", "N/A")
+        r2 = details.get("pivot_r2", "N/A")
+        rr_tac = details.get("rr_tactical", "N/A")
+        rr_str = details.get("rr_strategic", "N/A")
+        tgt_p = details.get("target_price", "N/A")
 
-        rr_ratio = "N/A"
-        if lp > 0 and s1 > 0 and r1 > 0:
-            upside = (r1 - lp) / lp
-            downside = (lp - s1) / lp
-            if downside > 0:
-                rr_ratio = f"{upside / downside:.2f}"
-
-        p_str = f"PIVOT: P:{details.get('pivot_p')} (S1:{s1} | R1:{r1}) | RR_Ratio:{rr_ratio}"
+        p_str = (
+            f"PIVOT: P:{details.get('pivot_p')} (S1:{s1} | R1:{r1} | R2:{r2})\n"
+            f"ST_TARGET: {r1} | TACTICAL_RR: {rr_tac}\n"
+            f"MT_TARGET: {tgt_p} | STRATEGIC_RR: {rr_str}"
+        )
 
         tech_str = (
             f"TECH: RSI:{rsi} | Vol:{vol}x | Trend:{trend} | 52H:-{h52}% | {p_str}"
         )
 
-        # 2. Fundamentals (Value vs Growth)
+        # 2. Fundamentals (Value vs Growth) [Data Guard]
         m_cap = details.get("market_cap", "N/A")
         pe = details.get("pe_ratio", "N/A")
         f_pe = details.get("forward_pe", "N/A")
+        ps = details.get("ps_ratio", "N/A")
         peg = details.get("peg_ratio", "N/A")
+
+        # Explicitly handle N/A for critical metrics to guide AI behavior
+        if pe == "N/A" and f_pe == "N/A":
+            pe = "정보 없음 (섹터 평균 참조 요망)"
+
         sbc_r = details.get("sbc_ratio", "N/A")
         div = details.get("dividend_yield", 0.0)
         div_str = f"{div * 100:.1f}%" if div else "0%"
 
-        fund_str = f"FUND: Cap:{m_cap} | TTM_PE:{pe}x | Fwd_PE:{f_pe}x | PEG:{peg} | SBC_Ratio:{sbc_r}% | Div:{div_str}"
+        f_score = details.get("f_score_rating", "정보 없음")
 
-        # 3. News
+        fund_str = f"FUND: Cap:{m_cap} | PE(TTM/Fwd):{pe}/{f_pe} | PS:{ps}x | PEG:{peg} | SBC:{sbc_r}% | Div:{div_str} | Quality:{f_score}"
+
+        # 3. Catalyst (News)
         news_summaries = []
         for n in news_items[:3]:
             headline = n.get("headline", "")[:40]
             sentiment = n.get("sentiment", "Neut")
             news_summaries.append(f"[{sentiment}] {headline}")
-        news_str = "NEWS: " + " | ".join(news_summaries)
+        news_str = "CATALYST/NEWS: " + " | ".join(news_summaries)
 
-        return f"[CONTEXT] Sector_Type: {biz_model}\n{tech_str}\n{fund_str}\n{news_str}"
+        norm_out = f"[CONTEXT] Type: {biz_model} | Hot_Keywords: {hot_keywords}\n{tech_str}\n{fund_str}\n{news_str}"
+        print(f"[DEBUG] Normalized Facts for LLM:\n{norm_out}")
+        return norm_out
+
+    def generate_agent_contexts(
+        self, ticker: str, details: Dict[str, Any], news_items: List[Dict[str, Any]]
+    ) -> Dict[str, str]:
+        """[Data Allocation] 공통 팩트 + 전문가별 전용 무기(Data Packet) 배분"""
+
+        # 0. Common Ground (모든 에이전트 공유)
+        common = {
+            "Ticker": ticker,
+            "Price": details.get("last_price"),
+            "Sector_Type": details.get("biz_model"),
+            "Market_Cap": details.get("market_cap"),
+        }
+
+        # 1. Macro Strategist Data (Trend & Context)
+        macro_data = {
+            **common,
+            **{
+                "Sector_Context": details.get("biz_model"),
+                "Dividend": f"{details.get('dividend_yield', 0) or 0:.2%}",
+                "Hot_Keywords": self._extract_hot_keywords(news_items),
+            },
+        }
+
+        # 2. Quant Analyst Data (Valuation & Statistics)
+        # 유사 Z-Score 계산 (현재가 - 52주평균) / (52주고가 - 52주저가)
+        h52_dist = details.get("fifty_two_week_high_dist", 0)
+        z_score_sim = (50 - h52_dist) / 25  # 단순화된 위치 점수 (-2.0 ~ 2.0 시뮬레이션)
+
+        quant_data = {
+            **common,
+            **{
+                "Valuation": {
+                    "P/E(TTM/Fwd)": f"{details.get('pe_ratio')}x / {details.get('forward_pe')}x",
+                    "PEG": details.get("peg_ratio"),
+                    "P/S": details.get("ps_ratio"),
+                    "Z_Score_Sim": f"{z_score_sim:+.2f}σ",
+                },
+                "Quality": details.get("f_score_rating", "Neutral"),
+            },
+        }
+
+        # 3. Devil's Advocate Data (Risks & Holes)
+        risk_data = {
+            **common,
+            **{
+                "SBC_Ratio": f"{details.get('sbc_ratio')}%",
+                "RR_Ratio": details.get("rr_ratio"),
+                "Overbought_RSI": "YES" if (details.get("rsi") or 50) > 70 else "NO",
+                "S1_Support": details.get("pivot_s1"),
+            },
+        }
+
+        # 4. Info Collector Data (Catalysts & Flows)
+        info_data = {
+            **common,
+            **{
+                "News_Keywords": self._extract_hot_keywords(news_items),
+                "Vol_Surge": f"{details.get('vol_surge_ratio')}x",
+                "Top_Headline": news_items[0].get("headline") if news_items else "N/A",
+            },
+        }
+
+        print(f"[DEBUG] Targeted Data Packets distributed for {ticker}")
+        return {
+            "macro": json.dumps(macro_data, ensure_ascii=False),
+            "quant": json.dumps(quant_data, ensure_ascii=False),
+            "devil": json.dumps(risk_data, ensure_ascii=False),
+            "info": json.dumps(info_data, ensure_ascii=False),
+        }
 
     def _run_council_debate(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Gemini 기반 끝장 토론(The Clash) 및 개인화 조언 생성 (CouncilManager 위임)"""
+        """Gemini 기반 끝장 토론(The Clash) v4.1 (신뢰도 및 대립표 포함)"""
         default_res = {
             "verdict": "HOLD",
-            "ai_summary": "데이터 부족으로 분석 불가",
-            "reason": "N/A",
-            "action_plan": "보수적 관망",
-            "battle_ground": "N/A",
-            "portfolio_advice": "정보 없음",
+            "confidence_score": "50%",
+            "headline_summary": "데이터 부족으로 분석 불가",
+            "clash_table": [],
+            "dashboard_clash": [],
+            "ai_summary": "분석 불가",
+            "master_briefing": {
+                "status": "정보 없음",
+                "risk": "정보 없음",
+                "strategy": "관망",
+            },
         }
 
         if not self.gemini_available:
@@ -184,39 +362,42 @@ class ResearchEngine:
         news_items = context.get("market_news", [])
         owned = context.get("holding_info")
 
-        # Sector Context 추출
-        biz_model = details.get("biz_model", "General")
-
-        # 1. 데이터 정규화 및 히스토리
-        normalized_facts = self._normalize_facts(ticker, details, news_items)
+        # 1. 데이터 패킷 생성
+        agent_contexts = self.generate_agent_contexts(ticker, details, news_items)
         previous_history = self._load_previous_history(ticker)
 
-        pos_str = "미보유"
-        if owned:
+        # [Data Guard] Position Context
+        pos_str = "신규 진입 관점 (보유량 0) - 현재 포트폴리오에 없음"
+        if owned and owned.get("quantity", 0) > 0:
             pos_str = f"{owned.get('quantity')}주 보유 (평단:{owned.get('average_price')}, 수익률:{owned.get('profit_rate', 0):.1f}%)"
 
-        # 2. [Manager] 프롬프트 조립 위임
+        # 2. [Manager] 프롬프트 조립
         prompt = self.council_manager.build_debate_prompt(
-            normalized_facts=normalized_facts,
+            normalized_facts=self._normalize_facts(ticker, details, news_items),
             pos_str=pos_str,
             history_str=previous_history,
-            biz_model=biz_model,
+            biz_model=details.get("biz_model", "General"),
+            agent_contexts=agent_contexts,
         )
 
         try:
             response = self.model.generate_content(
                 prompt, generation_config={"response_mime_type": "application/json"}
             )
-            text = response.text.strip()
-            if text.startswith("```"):
-                text = re.sub(r"^```json|^```|```$", "", text).strip()
-
-            result = json.loads(text)
-            return (
-                result
-                if isinstance(result, dict) and "verdict" in result
-                else default_res
+            result = json.loads(
+                re.sub(r"^```json|^```|```$", "", response.text.strip()).strip()
             )
+
+            # [Verify] 필수 필드 체크
+            required = ["verdict", "confidence_score", "clash_table"]
+            if all(k in result for k in required):
+                # Ensure details are embedded in the result for SSOT UI access
+                result["details"] = details
+                print(
+                    f"[DEBUG] Debate SUCCESS: Verdict={result['verdict']}, Confidence={result['confidence_score']}"
+                )
+                return result
+            return default_res
         except Exception as e:
             print(f"Council Debate Error: {e}")
             return default_res
@@ -228,20 +409,15 @@ class ResearchEngine:
         report_data = ticker_data.copy()
         report_data["market_news"] = market_news
 
-        # 1. [Fact Room] 확정된 기술적 지표 산출 (Accuracy Lock)
+        # 1. [Fact Room] 확정된 기술적 지표 산출
         history_data = ticker_data.get("history", {})
         details = {}
-
         ticker = ticker_data.get("ticker", "TEMP")
-        print(f"\n[DEBUG] === Research Engine: Processing {ticker} ===")
 
         if history_data:
             try:
                 df = pd.DataFrame.from_dict(history_data)
-                print(f"[DEBUG] DF Row Count: {len(df)}")
-
                 if not df.empty and "Close" in df.columns:
-                    # Technicals
                     rsi_val = FactorEngine.calculate_rsi(df)
                     vol_res = FactorEngine.analyze_volume_energy(df)
                     vol_ratio = vol_res.get("ratio", 100.0) / 100.0
@@ -251,25 +427,21 @@ class ResearchEngine:
                     ma20 = close_prices.rolling(window=20).mean().iloc[-1]
                     is_up_trend = last_close > ma20
 
-                    # [GES] Pivot Points Calculation
                     pivots = FactorEngine.calculate_pivot_points(df.iloc[-1])
                     pivot_data = pivots.get("Classic", {})
-
                     high_52 = close_prices.max()
                     dist_52 = (
                         ((high_52 - last_close) / high_52 * 100) if high_52 > 0 else 0.0
                     )
 
-                    # Fundamental Data Binding (from extra_stats)
                     extra = ticker_data.get("extra_stats", {})
                     financials = extra.get("financials", {})
                     valuation = extra.get("valuation", {})
                     growth = extra.get("growth", {})
-                    profile = extra.get("profile", {})
 
-                    # [GES] Business Model Detection
-                    biz_model = FactorEngine.detect_business_model(
-                        profile, financials, ticker
+                    # [F-Score]
+                    f_score_res = FactorEngine.calculate_piotroski_f_score(
+                        financials, extra.get("health", {}), growth, ticker
                     )
 
                     m_cap = financials.get("market_cap", 0)
@@ -280,23 +452,40 @@ class ResearchEngine:
                     else:
                         m_cap_str = f"{m_cap:,}" if m_cap else "N/A"
 
-                    # SBC Ratio calculation
                     sbc = financials.get("sbc", 0) or 0
                     rev = financials.get("total_rev", 1) or 1
                     sbc_ratio = (sbc / rev * 100) if rev > 0 else 0
 
-                    # RR Ratio calculation for template
-                    lp = ticker_data.get("last_price", 0)
-                    s1 = pivot_data.get("S1", 0)
-                    r1 = pivot_data.get("R1", 0)
-                    rr_val = 0.0
-                    if lp > 0 and s1 > 0 and r1 > 0:
-                        upside = (r1 - lp) / lp
-                        downside = (lp - s1) / lp
-                        if downside > 0:
-                            rr_val = upside / downside
+                    # [Multi-Timeframe RR Calculation - Calculator Protocol]
+                    from skills.news_analyzer import get_analyst_ratings
 
-                    # details 객체 완성 (템플릿 및 토론용)
+                    analyst_data = get_analyst_ratings(ticker)
+                    target_price = analyst_data.get("target_mean") or pivot_data.get(
+                        "R2", 0
+                    )
+
+                    def calc_rr_verdict(target, curr, stop):
+                        if stop >= curr:
+                            return None, "N/A (가각이 지지선 아래)"
+                        if target <= curr:
+                            return None, "N/A (가격이 목표가 위)"
+                        val = (target - curr) / (curr - stop)
+                        v_str = (
+                            "EXCELLENT (진입 적극추천)"
+                            if val >= 2.0
+                            else "GOOD (적정)"
+                            if val >= 1.0
+                            else "BAD (손익비 불리)"
+                        )
+                        return val, v_str
+
+                    rr_tac_val, rr_tac_ver = calc_rr_verdict(
+                        pivot_data.get("R1", 0), last_close, pivot_data.get("S1", 0)
+                    )
+                    rr_str_val, rr_str_ver = calc_rr_verdict(
+                        target_price, last_close, pivot_data.get("S1", 0)
+                    )
+
                     details = {
                         "rsi": round(rsi_val, 2) if not pd.isna(rsi_val) else "N/A",
                         "vol_surge_ratio": round(vol_ratio, 2),
@@ -306,63 +495,60 @@ class ResearchEngine:
                         "dividend_yield": financials.get("dividend_yield"),
                         "pe_ratio": valuation.get("trailing_pe"),
                         "forward_pe": valuation.get("forward_pe"),
+                        "ps_ratio": valuation.get("ps_ratio"),
                         "peg_ratio": growth.get("peg_ratio"),
                         "sbc_ratio": round(sbc_ratio, 2) if sbc > 0 else "N/A",
                         "pivot_p": round(pivot_data.get("P", 0), 2),
                         "pivot_s1": round(pivot_data.get("S1", 0), 2),
                         "pivot_r1": round(pivot_data.get("R1", 0), 2),
-                        "rr_ratio": round(rr_val, 2) if rr_val > 0 else "N/A",
-                        "biz_model": biz_model,  # Sector Context
-                        "last_price": lp,
+                        "pivot_r2": round(pivot_data.get("R2", 0), 2),
+                        "target_price": round(target_price, 2),
+                        "rr_tactical": f"{rr_tac_val:.2f} [{rr_tac_ver}]"
+                        if rr_tac_val
+                        else rr_tac_ver,
+                        "rr_strategic": f"{rr_str_val:.2f} [{rr_str_ver}]"
+                        if rr_str_val
+                        else rr_str_ver,
+                        "rr_ratio": round(rr_tac_val, 2) if rr_tac_val else "N/A",
+                        "biz_model": FactorEngine.detect_business_model(
+                            extra.get("profile", {}), financials, ticker
+                        ),
+                        "last_price": last_close,
+                        "f_score_rating": f_score_res["rating"],
                     }
-                    print(f"[DEBUG] Final Details Map: {details}")
-                else:
-                    print(
-                        f"[DEBUG] DF columns missing or empty. Columns: {list(df.columns)}"
-                    )
             except Exception as e:
-                print(
-                    f"[DEBUG] CRITICAL ERROR in create_unified_report details calc: {e}"
-                )
+                print(f"[DEBUG] create_unified_report Error: {e}")
 
         report_data["details"] = details
-
-        # 2. [Council Chamber] 전문가 토론 실행 (Context에 details 포함)
         debate_result = self._run_council_debate(report_data)
 
-        # 3. 결과 병합 (Type-safe Update)
         if isinstance(debate_result, dict):
+            # SSOT Merge: Debate result might contain 'details' or other overrides
             report_data.update(debate_result)
 
-        # 4. PDF 및 캐시 생성 (PDF는 마스터의 요청에 따라 점진적으로 제거 고려 가능하나 일단 유지)
-        md_content = self.reporter.generate_markdown(report_data)
-        pdf_bytes = self.reporter.render_pdf(md_content)
+        # PDF Generation Removed (v5.3 Patch)
+        # md_content = self.reporter.generate_markdown(report_data)
 
-        # 캐시 저장
-        pdf_path = self._get_cache_path(ticker, "pdf")
         json_path = self._get_cache_path(ticker, "json")
 
         try:
-            with open(pdf_path, "wb") as f:
-                f.write(pdf_bytes)
+            # Save FULL report data (including calculated details) for UI access
             with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(debate_result, f, ensure_ascii=False, indent=2)
+                json.dump(report_data, f, ensure_ascii=False, indent=2)
 
-            # [Post-Process] 구글 시트에 분석 로그 기록
-            try:
-                from skills.gsheet_loader import save_audit_log
+            from skills.gsheet_loader import save_audit_log
 
-                log_payload = {
-                    "summary": f"[{ticker}] {debate_result.get('verdict')} | {debate_result.get('ai_summary')[:150]}",
-                    "actions": debate_result.get("action_plan", "N/A"),
-                    "decisions": f"Battle: {debate_result.get('battle_ground')} | RSI: {details.get('rsi')}",
-                }
-                save_audit_log("GEM_Finance_Portfolio", log_payload)
-                print(f"[DEBUG] Analysis log saved to GSheet for {ticker}")
-            except Exception as ge:
-                print(f"[DEBUG] GSheet log error: {ge}")
-
+            save_audit_log(
+                "GEM_Finance_Portfolio",
+                {
+                    "summary": f"[{ticker}] {debate_result.get('verdict')} ({debate_result.get('confidence_score')})",
+                    "actions": debate_result.get("master_briefing", {}).get(
+                        "strategy", "N/A"
+                    ),
+                    "decisions": f"RR:{details.get('rr_tactical')} | Quality:{details.get('f_score_rating')}",
+                },
+            )
         except Exception:
             pass
 
-        return {"pdf": pdf_bytes, "metadata": debate_result}
+        return {"metadata": report_data}

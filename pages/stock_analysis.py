@@ -6,7 +6,6 @@ Strictly verified via Triple-Lock Pipeline.
 """
 
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 from skills.data_orchestrator import DataOrchestrator
 from skills.market_screener import MarketScreener
@@ -19,6 +18,7 @@ from pages.style_utils import load_custom_css
 # Import Analysis Modules
 from pages.analysis_tabs.technical import render_technical_tab
 from pages.analysis_tabs.fundamental import render_fundamental_tab
+from pages.analysis_tabs.profile import render_profile_tab
 
 
 def render_top_navigator():
@@ -56,9 +56,11 @@ def render_stock_analysis():
     with st.sidebar:
         st.markdown("### 🛠️ 데이터 관리")
         if st.button("🔄 포트폴리오 강제 동기화", use_container_width=True):
-            with st.spinner("GSheet 동기화 중..."):
+            with st.spinner("캐시 초기화 및 GSheet 동기화 중..."):
+                # [SSOT] 모든 전역 데이터 캐시 강제 삭제
+                st.cache_data.clear()
                 if orchestrator.sync_portfolio():
-                    st.success("동기화 완료!")
+                    st.success("동기화 및 캐시 갱신 완료!")
                     st.rerun()
                 else:
                     st.error("동기화 실패")
@@ -91,9 +93,6 @@ def render_stock_analysis():
                 label_visibility="collapsed",
             )
             selected_data = candidates[options.index(selected_option)]
-            tv_symbol = search_engine.to_tradingview_format(
-                selected_data["symbol"], selected_data["exchange"]
-            )
             ticker_only = selected_data["symbol"]
         else:
             st.warning("종목을 찾을 수 없습니다.")
@@ -139,14 +138,11 @@ def render_stock_analysis():
 
     # 2. Main Tabs
     tab1, tab2, tab3, tab4, tab5 = st.tabs(
-        ["📈 실시간 차트", "📊 기술 분석", "🏛️ 펀더멘털", "📰 뉴스", "🤖 AI 리서치"]
+        ["🏢 기업 개요", "📈 기술 분석", "🏛️ 펀더멘털", "📰 뉴스", "🤖 AI 리서치"]
     )
 
     with tab1:
-        components.html(
-            f'<div style="height:600px;width:100%"><script src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>{{ "width": "100%", "height": "600", "symbol": "{tv_symbol}", "interval": "D", "theme": "dark", "style": "1", "locale": "kr" }}</script></div>',
-            height=600,
-        )
+        render_profile_tab(ticker_only, ticker_info)
 
     with tab2:
         render_technical_tab(
@@ -279,86 +275,217 @@ def render_stock_analysis():
 
         if research_key in st.session_state:
             res = st.session_state[research_key]
-            pdf_bytes = res.get("pdf")
+            # [Patch v5.3] No PDF support
             meta = res.get("metadata", {})
 
-            # 1. Top Briefing (Verdict & Portfolio Advice)
+            # --- Layer 1: Headline Card (The Big Picture) ---
+            verdict = meta.get("verdict", "N/A")
             v_color = (
                 "#FF4B4B"
-                if "BUY" in meta.get("verdict", "")
+                if "BUY" in verdict
                 else "#3182F6"
-                if "SELL" in meta.get("verdict", "")
+                if "SELL" in verdict
                 else "#8B949E"
             )
 
-            col_v1, col_v2 = st.columns([1, 2])
-            with col_v1:
-                st.markdown(
-                    f"""
-                    <div class='glass-card' style='padding:20px; border-left: 10px solid {v_color}; text-align:center;'>
-                        <div style='font-size:0.9rem; color:#8B949E;'>최종 투자의견</div>
-                        <div style='font-size:2.2rem; font-weight:bold; color:{v_color};'>{meta.get("verdict", "N/A")}</div>
-                    </div>
-                """,
-                    unsafe_allow_html=True,
-                )
+            # Fallback for old cache
+            headline = meta.get(
+                "headline_summary",
+                meta.get("ai_summary", "요약 정보 없음")[:50] + "...",
+            )
 
-            with col_v2:
-                st.markdown(
-                    f"""
-                    <div class='glass-card' style='padding:20px; border-left: 5px solid #FFD700;'>
-                        <div style='font-size:0.9rem; color:#8B949E;'>🛡️ 마스터 포트폴리오 조언</div>
-                        <div style='font-size:1.05rem; font-weight:bold; margin-top:5px;'>{meta.get("portfolio_advice", "N/A")}</div>
-                    </div>
-                """,
-                    unsafe_allow_html=True,
-                )
-
-            # 2. Key Action Strategy
             st.markdown(
                 f"""
-                <div class='glass-card' style='padding:20px; margin-top:15px; background:rgba(49, 130, 246, 0.05);'>
-                    <div style='font-size:0.9rem; color:#8B949E; margin-bottom:10px;'>🎯 핵심 대응 전략 (Action Plan)</div>
-                    <div style='font-size:1.1rem; line-height:1.6;'>{meta.get("action_plan", "N/A")}</div>
+                <div class='glass-card' style='padding:25px; border-left: 10px solid {v_color}; margin-bottom: 20px;'>
+                    <div style='display:flex; justify-content:space-between; align-items:center;'>
+                        <div style='font-size:1.1rem; color:#8B949E; font-weight:600;'>OMNI COUNCIL VERDICT</div>
+                        <div style='background:{v_color}20; color:{v_color}; padding:5px 12px; border-radius:20px; font-size:0.9rem; font-weight:bold;'>확신도 {meta.get("confidence_score", "50%")}</div>
+                    </div>
+                    <div style='font-size:3rem; font-weight:900; color:{v_color}; margin: 10px 0; line-height:1;'>{verdict}</div>
+                    <div style='font-size:1.3rem; color:#E6EDF3; font-weight:500; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px; margin-top:5px;'>
+                        "{headline}"
+                    </div>
                 </div>
-            """,
+                """,
                 unsafe_allow_html=True,
             )
 
-            # 3. Detailed Debate (The Clash)
-            with st.expander("🏛️ 위원회 끝장 토론 상세 및 논쟁점 보기", expanded=False):
+            # --- Layer 2: The Visual Clash (Expert Grid) ---
+            st.markdown("#### ⚔️ 전문가 협의체 격돌 (The Visual Clash)")
+
+            summary_data = meta.get("dashboard_clash") or meta.get("clash_table", [])
+
+            if summary_data:
+                # Use st.columns for stable layout instead of raw CSS Grid string
+                for i in range(0, len(summary_data), 2):
+                    cols = st.columns(2)
+                    for j in range(2):
+                        if i + j < len(summary_data):
+                            c = summary_data[i + j]
+                            pos = c.get("position", "NEUTRAL")
+                            icon = c.get("icon") or (
+                                "🟢"
+                                if "BULL" in pos
+                                else "🔴"
+                                if "BEAR" in pos
+                                else "🟡"
+                            )
+
+                            logic = c.get("summary_logic") or c.get("logic", "-")
+                            counter = c.get("summary_counter") or c.get("counter", "-")
+
+                            # Color Alignment (Patch v4.6: Traffic Light Consistency)
+                            # BULL -> Green, BEAR -> Red, NEUTRAL -> Gray
+                            card_color = (
+                                "#00D8A5"
+                                if "BULL" in pos
+                                else "#FF4B4B"
+                                if "BEAR" in pos
+                                else "#8B949E"
+                            )
+                            card_bg = (
+                                "rgba(0, 216, 165, 0.05)"
+                                if "BULL" in pos
+                                else "rgba(255, 75, 75, 0.05)"
+                                if "BEAR" in pos
+                                else "rgba(255, 255, 255, 0.02)"
+                            )
+
+                            with cols[j]:
+                                st.markdown(
+                                    f"""
+                                <div style='background:{card_bg}; border:1px solid {card_color}40; border-radius:12px; padding:15px; height:100%; position:relative;'>
+                                    <div style='position:absolute; top:12px; right:12px; font-size:1.4rem;'>{icon}</div>
+                                    <div style='font-size:0.85rem; font-weight:bold; color:#8B949E; margin-bottom:2px;'>{c.get("agent", "Unknown")}</div>
+                                    <div style='font-size:0.75rem; color:{card_color}; font-weight:bold; margin-bottom:10px;'>{pos}</div>
+                                    <div style='font-size:0.9rem; line-height:1.4; color:#E6EDF3; margin-bottom:8px;'><b>Logic:</b> {logic}</div>
+                                    <div style='font-size:0.85rem; line-height:1.4; color:#8B949E;'><i>Vs: {counter}</i></div>
+                                </div>
+                                """,
+                                    unsafe_allow_html=True,
+                                )
+            else:
+                st.info("토론 데이터가 없습니다.")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # --- Layer 3: Master's Bottom Line (3-Card Dashboard) ---
+            st.markdown("#### 🎯 마스터 전용 요약 (The Bottom Line)")
+
+            briefing = meta.get("master_briefing", {})
+            details = meta.get("details", {})
+
+            # RR Metrics Row
+            rr_tac = details.get("rr_tactical", "N/A")
+            rr_str = details.get("rr_strategic", "N/A")
+
+            rr_cols = st.columns(2)
+            with rr_cols[0]:
+                st.markdown(f"**⚡ 단기 손익비 (Tactical):** {rr_tac}")
+            with rr_cols[1]:
+                st.markdown(f"**🎯 전략적 손익비 (Strategic):** {rr_str}")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Backward compatibility
+            if not briefing and "portfolio_advice" in meta:
+                briefing = {
+                    "status": meta.get("portfolio_advice"),
+                    "risk": "기존 데이터 참조 필요",
+                    "strategy": meta.get("action_plan"),
+                }
+
+            b_cols = st.columns(3)
+            with b_cols[0]:
                 st.markdown(
                     f"""
-                    <div style='background:rgba(255,255,255,0.03); padding:15px; border-radius:10px;'>
-                        <div style='font-size:0.9rem; color:#8B949E; margin-bottom:5px;'>🔥 핵심 논쟁점 (Battle Ground)</div>
-                        <div style='font-size:1.1rem; font-weight:bold; color:#FF4B4B;'>{meta.get("battle_ground", "N/A")}</div>
+                    <div class='glass-card' style='padding:15px; height:100%; border-top: 3px solid #3182F6;'>
+                        <div style='color:#3182F6; font-weight:bold; font-size:1rem; margin-bottom:8px;'>📊 포지션 현황</div>
+                        <div style='font-size:0.9rem; line-height:1.5; color:#E6EDF3;'>{briefing.get("status", "-")}</div>
                     </div>
-                    <div style='margin-top:15px;'>
-                        <div style='font-size:0.9rem; color:#8B949E; margin-bottom:5px;'>💡 위원회 토론 요약</div>
-                        <div style='font-size:1rem; line-height:1.6;'>{meta.get("ai_summary", "N/A")}</div>
+                """,
+                    unsafe_allow_html=True,
+                )
+            with b_cols[1]:
+                st.markdown(
+                    f"""
+                    <div class='glass-card' style='padding:15px; height:100%; border-top: 3px solid #FF4B4B;'>
+                        <div style='color:#FF4B4B; font-weight:bold; font-size:1rem; margin-bottom:8px;'>⚠️ 리스크 요인</div>
+                        <div style='font-size:0.9rem; line-height:1.5; color:#E6EDF3;'>{briefing.get("risk", "-")}</div>
                     </div>
-                    <div style='margin-top:15px;'>
-                        <div style='font-size:0.9rem; color:#8B949E; margin-bottom:5px;'>⚖️ 최종 결정 근거</div>
-                        <div style='font-size:0.95rem; color:#C9D1D9;'>{meta.get("reason", "N/A")}</div>
+                """,
+                    unsafe_allow_html=True,
+                )
+            with b_cols[2]:
+                st.markdown(
+                    f"""
+                    <div class='glass-card' style='padding:15px; height:100%; border-top: 3px solid #00D8A5;'>
+                        <div style='color:#00D8A5; font-weight:bold; font-size:1rem; margin-bottom:8px;'>🚀 최종 전략</div>
+                        <div style='font-size:0.9rem; line-height:1.5; color:#E6EDF3;'>{briefing.get("strategy", "-")}</div>
                     </div>
                 """,
                     unsafe_allow_html=True,
                 )
 
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            if pdf_bytes:
-                st.download_button(
-                    "📥 상세 PDF 리포트 다운로드 (전문가 버전)",
-                    pdf_bytes,
-                    f"OMNI_Analysis_{ticker_only}.pdf",
-                    "application/pdf",
-                    use_container_width=True,
+            # --- Layer 4: Action Plan Execution Bar ---
+            action = meta.get("action_plan", {})
+            if isinstance(action, dict):
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("#### 🛠️ 실행 가이드 (Execution Bar)")
+                st.markdown(
+                    f"""
+                    <div style='display:flex; gap:10px; flex-wrap:wrap;'>
+                        <div style='flex:1; background:#21262d; padding:10px; border-radius:8px; text-align:center; border:1px solid #30363d;'>
+                            <div style='color:#8B949E; font-size:0.8rem;'>✋ 관망/대기</div>
+                            <div style='color:#E6EDF3; font-weight:bold;'>{action.get("wait_price", "-")}</div>
+                        </div>
+                        <div style='flex:1; background:rgba(0, 216, 165, 0.1); padding:10px; border-radius:8px; text-align:center; border:1px solid #00D8A5;'>
+                            <div style='color:#00D8A5; font-size:0.8rem;'>🛒 진입/매수</div>
+                            <div style='color:#E6EDF3; font-weight:bold;'>{action.get("entry_price", "-")}</div>
+                        </div>
+                        <div style='flex:1; background:rgba(49, 130, 246, 0.1); padding:10px; border-radius:8px; text-align:center; border:1px solid #3182F6;'>
+                            <div style='color:#3182F6; font-size:0.8rem;'>💰 익절/목표</div>
+                            <div style='color:#E6EDF3; font-weight:bold;'>{action.get("profit_price", "-")}</div>
+                        </div>
+                        <div style='flex:1; background:rgba(255, 75, 75, 0.1); padding:10px; border-radius:8px; text-align:center; border:1px solid #FF4B4B;'>
+                            <div style='color:#FF4B4B; font-size:0.8rem;'>🛡️ 손절/방어</div>
+                            <div style='color:#E6EDF3; font-weight:bold;'>{action.get("stop_price", "-")}</div>
+                        </div>
+                    </div>
+                """,
+                    unsafe_allow_html=True,
                 )
-        else:
-            st.info(
-                "전문가 리포트가 생성되지 않았습니다. 위 버튼을 눌러 분석을 시작하십시오."
-            )
+
+            # Deep Dive Expander: Show FULL debate here
+            st.markdown("<br>", unsafe_allow_html=True)
+            with st.expander(
+                "🔍 위원회 토론 전문 보기 (Deep Dive / 검수용)", expanded=False
+            ):
+                # 1. AI Summary
+                st.markdown(
+                    f"**💡 의사결정 요약**: {meta.get('ai_summary', '내용 없음')}"
+                )
+                st.markdown("---")
+
+                # 2. Full Debate Text (Clash Table Original)
+                full_clash = meta.get("clash_table", [])
+                if full_clash:
+                    for fc in full_clash:
+                        st.markdown(f"#### {fc.get('agent', 'Expert')}")
+                        st.info(f"**주장(Logic):** {fc.get('logic', '-')}")
+                        st.warning(f"**반박(Counter):** {fc.get('counter', '-')}")
+                        st.divider()
+
+                # Show F-Score Quality Badge
+                f_rating = ticker_info.get("details", {}).get("f_score_rating", "N/A")
+                st.markdown(
+                    f"""
+                    <div style='margin-top:15px; padding:10px; background:rgba(0, 216, 165, 0.1); border-radius:8px;'>
+                        <b>💎 재무 퀄리티 진단 (F-Score):</b> {f_rating}
+                    </div>
+                """,
+                    unsafe_allow_html=True,
+                )
 
 
 if __name__ == "__main__":
