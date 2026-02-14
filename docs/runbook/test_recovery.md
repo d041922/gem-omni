@@ -3,15 +3,9 @@
 ## Goal
 - Keep `quality-gate` stable while recovering the legacy full test suite.
 
-## Current Gate
-- Blocking in CI: `make test` (stable subset)
-- Full suite (non-blocking/manual): `make test-full`
-
-## Stable Subset
-- `tests/test_policy_init.py`
-- `tests/test_news_intelligence.py`
-- `tests/test_ui_empty_state.py`
-- `tests/test_ui_binding_technicals.py`
+## Status
+- Completed: CI gate has returned to full discovery via `make test`.
+- `make test-full` is retained as an alias for operator convenience.
 
 ## Recovery Process
 1. Run `make test-full`.
@@ -20,8 +14,7 @@
 - Behavior regressions
 - External dependency/network assumptions
 3. Fix one group per PR.
-4. Add fixed tests to stable subset.
-5. When full suite is green, switch CI `make test` back to full discovery.
+4. Keep `make test` mapped to full discovery.
 
 ## Exit Criteria
 - `make test-full` passes on CI and local.

@@ -37,7 +37,7 @@ check-docs:
 	$(PYTHON) tools/verify_docs.py
 
 test:
-	$(PYTHON) -m pytest -q tests/test_policy_init.py tests/test_news_intelligence.py tests/test_ui_empty_state.py tests/test_ui_binding_technicals.py
+	$(PYTHON) -m pytest -q tests
 
 test-full:
 	$(PYTHON) -m pytest -q tests
