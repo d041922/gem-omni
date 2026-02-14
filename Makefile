@@ -1,14 +1,23 @@
 PYTHON ?= python
 
-.PHONY: bootstrap check test smoke docs-verify healthcheck
+.PHONY: bootstrap check check-lint check-compile check-docs test smoke docs-verify healthcheck
 
 bootstrap:
 	$(PYTHON) -m pip install -r requirements.txt
 	$(PYTHON) -m pip install pytest pytest-cov ruff
 
 check:
+	$(MAKE) check-lint
+	$(MAKE) check-compile
+	$(MAKE) check-docs
+
+check-lint:
 	$(PYTHON) -m ruff check app.py core skills agents pages scripts tools tests --select E9,F63,F7,F82 --exclude external_ref,.venv,venv
+
+check-compile:
 	$(PYTHON) -m compileall -q app.py core skills agents pages scripts tools
+
+check-docs:
 	$(PYTHON) tools/verify_docs.py
 
 test:
