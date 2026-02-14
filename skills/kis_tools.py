@@ -9,3 +9,19 @@ class KISTools:
         # Prevent direct access to account_info
         acc_no = account_info.get('account_no', 'N/A')
         return {"account": acc_no, "balance": 0.0}
+
+
+class KISConnector:
+    """Legacy-compatible connector used by older tests."""
+
+    def __init__(self):
+        self.is_paper = True
+        self._tools = KISTools()
+
+    def fetch_balance(self) -> Dict:
+        payload = self._tools.get_balance({"account_no": "PAPER"})
+        return {
+            "total_eval_amt": float(payload.get("balance", 0.0)),
+            "total_profit_amt": 0.0,
+            "holdings": [],
+        }

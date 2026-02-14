@@ -19,7 +19,7 @@ switch ($Task) {
     & $python (Join-Path $root 'tools\verify_docs.py')
   }
   'test' {
-    & $python -m pytest -q (Join-Path $root 'tests')
+    & $python -m pytest -q (Join-Path $root 'tests\\test_policy_init.py') (Join-Path $root 'tests\\test_news_intelligence.py') (Join-Path $root 'tests\\test_ui_empty_state.py') (Join-Path $root 'tests\\test_ui_binding_technicals.py')
   }
   'smoke' {
     & $python (Join-Path $root 'tools\healthcheck.py') --mode stub

@@ -181,3 +181,9 @@ class UserMemoryManager:
             return {row[0]: row[1] for row in cursor.fetchall()}
         finally:
             conn.close()
+
+
+class MemorySystem(UserMemoryManager):
+    """Backward-compatible alias used by legacy tests/tools."""
+
+    pass

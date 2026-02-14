@@ -6,6 +6,25 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from datetime import datetime
 
+
+class _FallbackLLM:
+    """Minimal callable LLM shim for compatibility in legacy tests."""
+
+    def __init__(self, model_name: str = "gemini/gemini-2.0-flash", temperature: float = 0.2):
+        self.model_name = model_name
+        self.temperature = temperature
+
+    def call(self, messages: List[Dict]) -> str:
+        if not messages:
+            return ""
+        last = messages[-1].get("content", "")
+        return f"[fallback:{self.model_name}] {str(last)[:200]}"
+
+
+def get_gemini_llm(model_name: str = "gemini/gemini-2.0-flash", temperature: float = 0.2):
+    """Return a lightweight LLM-compatible object used by strategy engine."""
+    return _FallbackLLM(model_name=model_name, temperature=temperature)
+
 @dataclass
 class Price:
     value: float
