@@ -18,4 +18,5 @@
 ## Notes
 - CI uses stub mode for external integrations by default.
 - `.env` is not required in CI; use `.env.example` validation and stubs.
-- `make test` runs full test discovery (`pytest -q tests`).
+- `make test` is the blocking stable subset gate.
+- `make test-full-fast` runs full-suite diagnostics (`--maxfail=20`) as non-blocking.

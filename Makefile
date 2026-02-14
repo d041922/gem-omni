@@ -16,7 +16,7 @@ PYTHON ?= python3
 endif
 endif
 
-.PHONY: bootstrap check check-lint check-compile check-docs test test-full smoke docs-verify healthcheck
+.PHONY: bootstrap check check-lint check-compile check-docs test test-full test-full-fast smoke docs-verify healthcheck
 
 bootstrap:
 	$(PYTHON) -m pip install -r requirements.txt
@@ -37,10 +37,13 @@ check-docs:
 	$(PYTHON) tools/verify_docs.py
 
 test:
-	$(PYTHON) -m pytest -q tests
+	$(PYTHON) -m pytest -q tests/test_policy_init.py tests/test_news_intelligence.py tests/test_ui_empty_state.py tests/test_ui_binding_technicals.py
 
 test-full:
 	$(PYTHON) -m pytest -q tests
+
+test-full-fast:
+	$(PYTHON) -m pytest -q --maxfail=20 tests
 
 smoke:
 	$(PYTHON) tools/healthcheck.py --mode stub

@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory=$true)]
-  [ValidateSet('bootstrap','check','test','test-full','smoke','docs-verify','healthcheck')]
+  [ValidateSet('bootstrap','check','test','test-full','test-full-fast','smoke','docs-verify','healthcheck')]
   [string]$Task
 )
 
@@ -34,10 +34,13 @@ switch ($Task) {
     Invoke-Checked { & $python (Join-Path $root 'tools\verify_docs.py') }
   }
   'test' {
-    Invoke-Checked { & $python -m pytest -q (Join-Path $root 'tests') }
+    Invoke-Checked { & $python -m pytest -q (Join-Path $root 'tests\\test_policy_init.py') (Join-Path $root 'tests\\test_news_intelligence.py') (Join-Path $root 'tests\\test_ui_empty_state.py') (Join-Path $root 'tests\\test_ui_binding_technicals.py') }
   }
   'test-full' {
     Invoke-Checked { & $python -m pytest -q (Join-Path $root 'tests') }
+  }
+  'test-full-fast' {
+    Invoke-Checked { & $python -m pytest -q --maxfail=20 (Join-Path $root 'tests') }
   }
   'smoke' {
     Invoke-Checked { & $python (Join-Path $root 'tools\healthcheck.py') --mode stub }

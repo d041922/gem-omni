@@ -4,8 +4,9 @@
 - Keep `quality-gate` stable while recovering the legacy full test suite.
 
 ## Status
-- Completed: CI gate has returned to full discovery via `make test`.
-- `make test-full` is retained as an alias for operator convenience.
+- Active recovery mode:
+- Blocking gate: `make test` (stable subset)
+- Non-blocking diagnostic: `make test-full-fast` (`pytest --maxfail=20 tests`)
 
 ## Recovery Process
 1. Run `make test-full`.
@@ -14,7 +15,7 @@
 - Behavior regressions
 - External dependency/network assumptions
 3. Fix one group per PR.
-4. Keep `make test` mapped to full discovery.
+4. Fix one failure bucket per PR until `make test-full` is green.
 
 ## Exit Criteria
 - `make test-full` passes on CI and local.
