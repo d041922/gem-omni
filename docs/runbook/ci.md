@@ -18,3 +18,5 @@
 ## Notes
 - CI uses stub mode for external integrations by default.
 - `.env` is not required in CI; use `.env.example` validation and stubs.
+- Full regression suite is tracked separately with `make test-full` during recovery.
+- See `docs/runbook/test_recovery.md`.
