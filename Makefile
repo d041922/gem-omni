@@ -22,6 +22,8 @@ CHECK_TARGETS := app.py core skills agents pages scripts tools tests
 EXISTING_CHECK_TARGETS := $(strip $(foreach p,$(CHECK_TARGETS),$(if $(wildcard $(p)),$(p),)))
 DOC_VERIFY_SCRIPT := $(firstword $(wildcard tools/verify_docs.py scripts/verify_docs.py))
 HEALTHCHECK_SCRIPT := $(firstword $(wildcard tools/healthcheck.py scripts/healthcheck.py))
+QUICK_TEST_CANDIDATES := tests/test_policy_init.py tests/test_news_intelligence.py tests/test_ui_empty_state.py tests/test_ui_binding_technicals.py
+EXISTING_QUICK_TESTS := $(strip $(foreach p,$(QUICK_TEST_CANDIDATES),$(if $(wildcard $(p)),$(p),)))
 
 bootstrap:
 	$(PYTHON) -m pip install -r requirements.txt
@@ -47,7 +49,11 @@ check-docs:
 
 test:
 	$(PYTHON) -c "import os; os.makedirs('.tmp/pytest_tmp', exist_ok=True); os.makedirs('.tmp/pytest_cache', exist_ok=True)"
-	$(PYTHON) -m pytest $(PYTEST_OPTS) tests/test_policy_init.py tests/test_news_intelligence.py tests/test_ui_empty_state.py tests/test_ui_binding_technicals.py
+	@if [ -n "$(EXISTING_QUICK_TESTS)" ]; then \
+		$(PYTHON) -m pytest $(PYTEST_OPTS) $(EXISTING_QUICK_TESTS); \
+	else \
+		$(PYTHON) -m pytest $(PYTEST_OPTS) tests; \
+	fi
 
 test-full:
 	$(PYTHON) -c "import os; os.makedirs('.tmp/pytest_tmp', exist_ok=True); os.makedirs('.tmp/pytest_cache', exist_ok=True)"
