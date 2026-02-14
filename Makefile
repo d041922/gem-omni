@@ -17,6 +17,7 @@ endif
 endif
 
 .PHONY: bootstrap check check-lint check-compile check-docs test test-full test-full-fast smoke docs-verify healthcheck
+PYTEST_OPTS := -q -p no:cacheprovider --basetemp=.tmp/pytest_tmp -o cache_dir=.tmp/pytest_cache
 
 bootstrap:
 	$(PYTHON) -m pip install -r requirements.txt
@@ -37,13 +38,16 @@ check-docs:
 	$(PYTHON) tools/verify_docs.py
 
 test:
-	$(PYTHON) -m pytest -q tests/test_policy_init.py tests/test_news_intelligence.py tests/test_ui_empty_state.py tests/test_ui_binding_technicals.py
+	$(PYTHON) -c "import os; os.makedirs('.tmp/pytest_tmp', exist_ok=True); os.makedirs('.tmp/pytest_cache', exist_ok=True)"
+	$(PYTHON) -m pytest $(PYTEST_OPTS) tests/test_policy_init.py tests/test_news_intelligence.py tests/test_ui_empty_state.py tests/test_ui_binding_technicals.py
 
 test-full:
-	$(PYTHON) -m pytest -q tests
+	$(PYTHON) -c "import os; os.makedirs('.tmp/pytest_tmp', exist_ok=True); os.makedirs('.tmp/pytest_cache', exist_ok=True)"
+	$(PYTHON) -m pytest $(PYTEST_OPTS) tests
 
 test-full-fast:
-	$(PYTHON) -m pytest -q --maxfail=20 tests
+	$(PYTHON) -c "import os; os.makedirs('.tmp/pytest_tmp', exist_ok=True); os.makedirs('.tmp/pytest_cache', exist_ok=True)"
+	$(PYTHON) -m pytest $(PYTEST_OPTS) --maxfail=20 tests
 
 smoke:
 	$(PYTHON) tools/healthcheck.py --mode stub

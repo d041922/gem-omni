@@ -72,13 +72,60 @@ class AssetClassifier:
             return {
                 'action': 'increase_core',
                 'target_pct': target_min,
-                'adjustment_needed': target_min - current_core_pct
+                'adjustment_needed': target_min - current_core_pct,
+                'message': f'Increase Core allocation to {target_min:.0f}%'
             }
         elif current_core_pct > target_max:
             return {
                 'action': 'decrease_core',
                 'target_pct': target_max,
-                'adjustment_needed': current_core_pct - target_max
+                'adjustment_needed': current_core_pct - target_max,
+                'message': f'Decrease Core allocation to {target_max:.0f}%'
             }
         else:
-            return {'action': 'maintain', 'status': 'balanced', 'target_pct': target_min, 'adjustment_needed': 0}
+            return {
+                'action': 'maintain',
+                'status': 'balanced',
+                'target_pct': target_min,
+                'adjustment_needed': 0,
+                'message': 'Core allocation is within target range'
+            }
+
+    def calculate_allocation(self, holdings: list[Dict[str, Any]]) -> Dict[str, Any]:
+        """Legacy compatibility API for allocation summary."""
+        classified = []
+        total_value = 0.0
+        core_value = 0.0
+
+        for h in holdings:
+            value = float(h.get("value", 0) or 0)
+            asset_type = self.classify(
+                str(h.get("ticker", "")),
+                str(h.get("category", "")),
+                str(h.get("name", "")),
+                str(h.get("account", "Unknown")),
+            )
+            if asset_type in {"Scaling", "Optional"}:
+                asset_type = "Satellite"
+
+            item = dict(h)
+            item["asset_type"] = asset_type
+            classified.append(item)
+
+            total_value += value
+            if asset_type == "Core":
+                core_value += value
+
+        satellite_value = max(0.0, total_value - core_value)
+        core_pct = (core_value / total_value * 100.0) if total_value else 0.0
+        satellite_pct = 100.0 - core_pct if total_value else 0.0
+
+        return {
+            "total_value": total_value,
+            "core_value": core_value,
+            "core_pct": core_pct,
+            "satellite_value": satellite_value,
+            "satellite_pct": satellite_pct,
+            "holdings_classified": classified,
+            "rebalancing": self.get_rebalancing_target(core_pct),
+        }

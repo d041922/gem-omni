@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import time
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -24,5 +25,4 @@ def test_data_manager():
     print(f"Second call took: {time.time() - start:.4f}s")
 
 if __name__ == "__main__":
-    import time
     test_data_manager()

@@ -7,6 +7,7 @@
 - Active recovery mode:
 - Blocking gate: `make test` (stable subset)
 - Non-blocking diagnostic: `make test-full-fast` (`pytest --maxfail=20 tests`)
+- Failure catalog: `docs/runbook/full_test_failure_catalog.md`
 
 ## Recovery Process
 1. Run `make test-full`.

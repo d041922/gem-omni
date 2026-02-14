@@ -4,6 +4,7 @@ Handles global macro, portfolio mapping, and master profile integration.
 """
 import streamlit as st
 import pandas as pd
+import yfinance as yf
 from typing import Dict, List, Any, Optional
 from core.models import Portfolio, MacroIndicators
 from skills.data_orchestrator import DataOrchestrator
@@ -65,5 +66,45 @@ class DataManager:
             macro=macro,
             holdings=holdings
         )
+
+    @staticmethod
+    def get_market_indices() -> Dict[str, Any]:
+        """Compatibility API for legacy tests."""
+        orchestrator = DataManager._get_orchestrator()
+        state = orchestrator.read_state()
+        market = state.get("data", {}).get("market", {})
+        return {
+            "usd_krw": float(market.get("exchange_rate", 1450.0)),
+            "nasdaq_change": float(market.get("nasdaq_change", 0.0)),
+            "kospi_change": float(market.get("kospi_change", 0.0)),
+            "vix": float(market.get("vix", 15.0)),
+        }
+
+    @staticmethod
+    @st.cache_data(ttl=600)
+    def get_stock_snapshot(ticker: str) -> Dict[str, Any]:
+        orchestrator = DataManager._get_orchestrator()
+        data = orchestrator.get_full_ticker_data(ticker)
+        return {
+            "ticker": data.get("ticker", ticker),
+            "name": data.get("name", ticker),
+            "last_price": data.get("last_price", 0.0),
+            "is_ready": data.get("is_ready", False),
+        }
+
+    @staticmethod
+    @st.cache_data(ttl=600)
+    def get_stock_data(ticker: str, period: str = "1y") -> Dict[str, Any]:
+        """Legacy compatibility API used by stock_analyzer tests."""
+        symbol = ticker.upper().strip()
+        try:
+            t = yf.Ticker(symbol)
+            hist = t.history(period=period)
+            info = getattr(t, "info", {}) or {}
+            if hist is None or hist.empty:
+                return {"success": False, "error": f"No price data for {symbol}"}
+            return {"success": True, "history": hist, "info": info}
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
 
 def get_data_manager(): return DataManager()
