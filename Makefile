@@ -1,4 +1,20 @@
+ifeq ($(OS),Windows_NT)
+ifneq ("$(wildcard .venv/Scripts/python.exe)","")
+PYTHON := .venv/Scripts/python.exe
+else ifneq ("$(wildcard venv/Scripts/python.exe)","")
+PYTHON := venv/Scripts/python.exe
+else
 PYTHON ?= python
+endif
+else
+ifneq ("$(wildcard .venv/bin/python)","")
+PYTHON := .venv/bin/python
+else ifneq ("$(wildcard venv/bin/python)","")
+PYTHON := venv/bin/python
+else
+PYTHON ?= python3
+endif
+endif
 
 .PHONY: bootstrap check check-lint check-compile check-docs test test-full smoke docs-verify healthcheck
 
