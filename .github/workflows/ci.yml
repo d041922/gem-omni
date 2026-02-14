@@ -26,8 +26,11 @@ jobs:
           python -m pip install --upgrade pip
           make bootstrap
 
-      - name: Quality Gate (single path)
-        run: |
-          make check
-          make test
-          make smoke
+      - name: Check
+        run: make check
+
+      - name: Test
+        run: make test
+
+      - name: Smoke
+        run: make smoke
