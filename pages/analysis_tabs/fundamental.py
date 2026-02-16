@@ -10,6 +10,20 @@ from skills.quant_engine import FactorEngine
 from skills.market_screener import MarketScreener
 
 
+def _resolve_peg_display(growth: dict, valuation: dict) -> tuple[str, str]:
+    peg = growth.get("peg_ratio")
+    if peg is not None and peg != 0:
+        return f"{peg:.2f}", "reported"
+
+    pe = valuation.get("trailing_pe")
+    rev_growth = growth.get("rev_growth")
+    if pe and rev_growth and rev_growth > 0:
+        derived = pe / (rev_growth * 100)
+        return f"{derived:.2f}", "derived: trailing_pe / revenue_growth"
+
+    return "N/A", "unavailable: growth/valuation data missing"
+
+
 def render_fundamental_tab(
     ticker_only: str, screener: MarketScreener, extra: dict, last_p: float, holding_info: dict = None
 ):
@@ -42,7 +56,7 @@ def render_fundamental_tab(
     with v_col2:
         sector_name = extra.get("profile", {}).get("sector", "시장")
         st.markdown(
-            f"<div style='text-align:center; padding:10px; opacity:0.7;'>업계 평균({sector_name}) 대비<br><b style='font-size:1.2rem; color:#00D8A5;'>압도적 최상위</b> 판정</div>",
+            f"<div style='text-align:center; padding:10px; opacity:0.75;'>업계 평균({sector_name}) 대비<br><b style='font-size:1.0rem; color:#8B949E;'>상대 평가 요약</b></div>",
             unsafe_allow_html=True,
         )
         # Peer Comparison (Fixed HTML rendering)
@@ -87,7 +101,7 @@ def render_fundamental_tab(
         st.markdown("##### 📂 전략적 펀더멘털 리포트 (Master Matrix)")
         report_data = FactorEngine.generate_fundamental_report(extra)
         if report_data:
-            st.table(pd.DataFrame(report_data))
+            st.dataframe(pd.DataFrame(report_data), use_container_width=True, hide_index=True)
         else:
             st.info("상세 리포트 생성을 위한 데이터가 부족합니다.")
 
@@ -104,21 +118,27 @@ def render_fundamental_tab(
             "ROE (수익성)",
             f"{(fin.get('roe', 0) * 100):.1f}%" if fin.get("roe") else "N/A",
         )
+        peg_value, peg_source = _resolve_peg_display(growth, val)
         c2.metric(
             "PEG Ratio (성장성)",
-            f"{growth.get('peg_ratio', 0):.2f}" if growth.get("peg_ratio") else "N/A",
+            peg_value,
         )
+        c2.caption(peg_source)
         st.divider()
 
         # --- Row 2: 가치평가 & 재무건전성 ---
-        v1, v2 = st.columns(2)
+        v1, v2, v3 = st.columns(3)
         pe_ttm = val.get("trailing_pe", 0)
         pe_fwd = val.get("forward_pe", 0)
         v1.metric(
-            "P/E (TTM / Forward)",
-            f"{pe_ttm:.1f}x / {pe_fwd:.1f}x" if pe_ttm else "N/A",
+            "P/E (TTM)",
+            f"{pe_ttm:.1f}x" if pe_ttm else "N/A",
         )
         v2.metric(
+            "P/E (FWD)",
+            f"{pe_fwd:.1f}x" if pe_fwd else "N/A",
+        )
+        v3.metric(
             "부채비율 (Safety)",
             f"{health.get('debt_to_equity', 0):.1f}%"
             if health.get("debt_to_equity")

@@ -7,6 +7,8 @@ Strictly verified via Triple-Lock Pipeline.
 
 import streamlit as st
 import pandas as pd
+from datetime import datetime, timezone
+from html import escape, unescape
 from skills.data_orchestrator import DataOrchestrator
 from skills.market_screener import MarketScreener
 from skills.news_manager import NewsManager
@@ -19,6 +21,41 @@ from pages.style_utils import load_custom_css
 from pages.analysis_tabs.technical import render_technical_tab
 from pages.analysis_tabs.fundamental import render_fundamental_tab
 from pages.analysis_tabs.profile import render_profile_tab
+
+
+def _sanitize_html_text(value: object, *, multiline: bool = False) -> str:
+    raw = "" if value is None else str(value)
+    normalized = unescape(raw).replace("\r\n", "\n").replace("\r", "\n").strip()
+    escaped = escape(normalized, quote=True)
+    if multiline:
+        return escaped.replace("\n", "<br>")
+    return escaped
+
+
+def _format_as_of(value: object) -> str:
+    if not value:
+        return "unknown"
+    try:
+        text = str(value).strip()
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        return _sanitize_html_text(value)
+
+
+def _is_stale_news(value: object, *, stale_hours: int = 72) -> bool:
+    if not value:
+        return False
+    try:
+        text = str(value).strip()
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds() > stale_hours * 3600
+    except Exception:
+        return False
 
 
 def render_top_navigator():
@@ -241,11 +278,33 @@ def render_stock_analysis():
             st.rerun()
 
         if ticker_news:
+            stale_news_detected = False
             for n in ticker_news:
+                headline = _sanitize_html_text(n.get("headline", "No Title"))
+                sentiment = _sanitize_html_text(n.get("sentiment", "Neutral"))
+                summary = _sanitize_html_text(n.get("summary", ""), multiline=True)
+                source = _sanitize_html_text(n.get("source", "Unknown"))
+                as_of = _format_as_of(n.get("published_at"))
+                url = str(n.get("url", "")).strip()
+                link_html = (
+                    f"<a href='{escape(url, quote=True)}' target='_blank' rel='noopener noreferrer'>View source</a>"
+                    if url.startswith("http://") or url.startswith("https://")
+                    else ""
+                )
+                stale_news_detected = stale_news_detected or _is_stale_news(n.get("published_at"))
                 st.markdown(
-                    f"<div style='margin-bottom:15px; padding:15px; background:rgba(255,255,255,0.02); border-radius:10px; border-left: 4px solid #3182F6;'><b>{n['headline']}</b><br><span style='color:#8B949E; font-size:0.8rem;'>분석: {n['sentiment']}</span><p style='font-size:0.85rem; margin-top:5px;'>{n['summary']}</p></div>",
+                    f"""
+                    <div style='margin-bottom:15px; padding:15px; background:rgba(255,255,255,0.02); border-radius:10px; border-left: 4px solid #3182F6;'>
+                        <b>{headline}</b><br>
+                        <span style='color:#8B949E; font-size:0.8rem;'>분석: {sentiment}</span><br>
+                        <span style='color:#8B949E; font-size:0.78rem;'>source: {source} | as_of: {as_of} {link_html}</span>
+                        <p style='font-size:0.85rem; margin-top:8px;'>{summary}</p>
+                    </div>
+                    """,
                     unsafe_allow_html=True,
                 )
+            if stale_news_detected:
+                st.warning("일부 뉴스의 시점(as_of)이 72시간 이상 경과했습니다. 최신성 확인 후 판단하세요.")
         else:
             st.info("관련 뉴스가 없습니다.")
 
@@ -263,13 +322,20 @@ def render_stock_analysis():
         ):
             with st.spinner("전문가 위원회 소집 및 토론 중..."):
                 st.session_state[research_key] = research.get_report_with_cache(
-                    ticker_only, force_refresh=True
+                    ticker_only,
+                    force_refresh=True,
+                    market_news=ticker_news,
+                    ticker_info=ticker_info,
                 )
 
         # Display cached result if available
         if research_key not in st.session_state:
             # Try to load from cache without force refresh
-            res = research.get_report_with_cache(ticker_only)
+            res = research.get_report_with_cache(
+                ticker_only,
+                market_news=ticker_news,
+                ticker_info=ticker_info,
+            )
             if res:
                 st.session_state[research_key] = res
 
@@ -279,27 +345,30 @@ def render_stock_analysis():
             meta = res.get("metadata", {})
 
             # --- Layer 1: Headline Card (The Big Picture) ---
-            verdict = meta.get("verdict", "N/A")
+            verdict_raw = str(meta.get("verdict", "N/A"))
             v_color = (
                 "#FF4B4B"
-                if "BUY" in verdict
+                if "BUY" in verdict_raw
                 else "#3182F6"
-                if "SELL" in verdict
+                if "SELL" in verdict_raw
                 else "#8B949E"
             )
+            verdict = _sanitize_html_text(verdict_raw)
+            confidence = _sanitize_html_text(meta.get("confidence_score", "50%"))
 
             # Fallback for old cache
-            headline = meta.get(
+            headline_raw = meta.get(
                 "headline_summary",
                 meta.get("ai_summary", "요약 정보 없음")[:50] + "...",
             )
+            headline = _sanitize_html_text(headline_raw)
 
             st.markdown(
                 f"""
                 <div class='glass-card' style='padding:25px; border-left: 10px solid {v_color}; margin-bottom: 20px;'>
                     <div style='display:flex; justify-content:space-between; align-items:center;'>
                         <div style='font-size:1.1rem; color:#8B949E; font-weight:600;'>OMNI COUNCIL VERDICT</div>
-                        <div style='background:{v_color}20; color:{v_color}; padding:5px 12px; border-radius:20px; font-size:0.9rem; font-weight:bold;'>확신도 {meta.get("confidence_score", "50%")}</div>
+                        <div style='background:{v_color}20; color:{v_color}; padding:5px 12px; border-radius:20px; font-size:0.9rem; font-weight:bold;'>확신도 {confidence}</div>
                     </div>
                     <div style='font-size:3rem; font-weight:900; color:{v_color}; margin: 10px 0; line-height:1;'>{verdict}</div>
                     <div style='font-size:1.3rem; color:#E6EDF3; font-weight:500; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px; margin-top:5px;'>
@@ -331,8 +400,14 @@ def render_stock_analysis():
                                 else "🟡"
                             )
 
-                            logic = c.get("summary_logic") or c.get("logic", "-")
-                            counter = c.get("summary_counter") or c.get("counter", "-")
+                            logic = _sanitize_html_text(
+                                c.get("summary_logic") or c.get("logic", "-")
+                            )
+                            counter = _sanitize_html_text(
+                                c.get("summary_counter") or c.get("counter", "-")
+                            )
+                            agent = _sanitize_html_text(c.get("agent", "Unknown"))
+                            pos_text = _sanitize_html_text(pos)
 
                             # Color Alignment (Patch v4.6: Traffic Light Consistency)
                             # BULL -> Green, BEAR -> Red, NEUTRAL -> Gray
@@ -356,8 +431,8 @@ def render_stock_analysis():
                                     f"""
                                 <div style='background:{card_bg}; border:1px solid {card_color}40; border-radius:12px; padding:15px; height:100%; position:relative;'>
                                     <div style='position:absolute; top:12px; right:12px; font-size:1.4rem;'>{icon}</div>
-                                    <div style='font-size:0.85rem; font-weight:bold; color:#8B949E; margin-bottom:2px;'>{c.get("agent", "Unknown")}</div>
-                                    <div style='font-size:0.75rem; color:{card_color}; font-weight:bold; margin-bottom:10px;'>{pos}</div>
+                                    <div style='font-size:0.85rem; font-weight:bold; color:#8B949E; margin-bottom:2px;'>{agent}</div>
+                                    <div style='font-size:0.75rem; color:{card_color}; font-weight:bold; margin-bottom:10px;'>{pos_text}</div>
                                     <div style='font-size:0.9rem; line-height:1.4; color:#E6EDF3; margin-bottom:8px;'><b>Logic:</b> {logic}</div>
                                     <div style='font-size:0.85rem; line-height:1.4; color:#8B949E;'><i>Vs: {counter}</i></div>
                                 </div>
@@ -376,8 +451,8 @@ def render_stock_analysis():
             details = meta.get("details", {})
 
             # RR Metrics Row
-            rr_tac = details.get("rr_tactical", "N/A")
-            rr_str = details.get("rr_strategic", "N/A")
+            rr_tac = _sanitize_html_text(details.get("rr_tactical", "N/A"))
+            rr_str = _sanitize_html_text(details.get("rr_strategic", "N/A"))
 
             rr_cols = st.columns(2)
             with rr_cols[0]:
@@ -401,7 +476,7 @@ def render_stock_analysis():
                     f"""
                     <div class='glass-card' style='padding:15px; height:100%; border-top: 3px solid #3182F6;'>
                         <div style='color:#3182F6; font-weight:bold; font-size:1rem; margin-bottom:8px;'>📊 포지션 현황</div>
-                        <div style='font-size:0.9rem; line-height:1.5; color:#E6EDF3;'>{briefing.get("status", "-")}</div>
+                        <div style='font-size:0.9rem; line-height:1.5; color:#E6EDF3;'>{_sanitize_html_text(briefing.get("status", "-"))}</div>
                     </div>
                 """,
                     unsafe_allow_html=True,
@@ -411,7 +486,7 @@ def render_stock_analysis():
                     f"""
                     <div class='glass-card' style='padding:15px; height:100%; border-top: 3px solid #FF4B4B;'>
                         <div style='color:#FF4B4B; font-weight:bold; font-size:1rem; margin-bottom:8px;'>⚠️ 리스크 요인</div>
-                        <div style='font-size:0.9rem; line-height:1.5; color:#E6EDF3;'>{briefing.get("risk", "-")}</div>
+                        <div style='font-size:0.9rem; line-height:1.5; color:#E6EDF3;'>{_sanitize_html_text(briefing.get("risk", "-"))}</div>
                     </div>
                 """,
                     unsafe_allow_html=True,
@@ -421,7 +496,7 @@ def render_stock_analysis():
                     f"""
                     <div class='glass-card' style='padding:15px; height:100%; border-top: 3px solid #00D8A5;'>
                         <div style='color:#00D8A5; font-weight:bold; font-size:1rem; margin-bottom:8px;'>🚀 최종 전략</div>
-                        <div style='font-size:0.9rem; line-height:1.5; color:#E6EDF3;'>{briefing.get("strategy", "-")}</div>
+                        <div style='font-size:0.9rem; line-height:1.5; color:#E6EDF3;'>{_sanitize_html_text(briefing.get("strategy", "-"))}</div>
                     </div>
                 """,
                     unsafe_allow_html=True,
@@ -429,32 +504,33 @@ def render_stock_analysis():
 
             # --- Layer 4: Action Plan Execution Bar ---
             action = meta.get("action_plan", {})
-            if isinstance(action, dict):
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown("#### 🛠️ 실행 가이드 (Execution Bar)")
-                st.markdown(
-                    f"""
-                    <div style='display:flex; gap:10px; flex-wrap:wrap;'>
-                        <div style='flex:1; background:#21262d; padding:10px; border-radius:8px; text-align:center; border:1px solid #30363d;'>
-                            <div style='color:#8B949E; font-size:0.8rem;'>✋ 관망/대기</div>
-                            <div style='color:#E6EDF3; font-weight:bold;'>{action.get("wait_price", "-")}</div>
+            if isinstance(action, dict) and any(
+                action.get(key) for key in ("wait_price", "entry_price", "profit_price", "stop_price")
+            ):
+                with st.expander("🛠️ 실행 레벨 가이드 (옵션)", expanded=False):
+                    st.markdown(
+                        f"""
+                        <div style='display:flex; gap:10px; flex-wrap:wrap;'>
+                            <div style='flex:1; background:#21262d; padding:10px; border-radius:8px; text-align:center; border:1px solid #30363d;'>
+                                <div style='color:#8B949E; font-size:0.8rem;'>✋ 관망/대기</div>
+                                <div style='color:#E6EDF3; font-weight:bold;'>{_sanitize_html_text(action.get("wait_price", "-"))}</div>
+                            </div>
+                            <div style='flex:1; background:rgba(0, 216, 165, 0.1); padding:10px; border-radius:8px; text-align:center; border:1px solid #00D8A5;'>
+                                <div style='color:#00D8A5; font-size:0.8rem;'>🛒 진입/매수</div>
+                                <div style='color:#E6EDF3; font-weight:bold;'>{_sanitize_html_text(action.get("entry_price", "-"))}</div>
+                            </div>
+                            <div style='flex:1; background:rgba(49, 130, 246, 0.1); padding:10px; border-radius:8px; text-align:center; border:1px solid #3182F6;'>
+                                <div style='color:#3182F6; font-size:0.8rem;'>💰 익절/목표</div>
+                                <div style='color:#E6EDF3; font-weight:bold;'>{_sanitize_html_text(action.get("profit_price", "-"))}</div>
+                            </div>
+                            <div style='flex:1; background:rgba(255, 75, 75, 0.1); padding:10px; border-radius:8px; text-align:center; border:1px solid #FF4B4B;'>
+                                <div style='color:#FF4B4B; font-size:0.8rem;'>🛡️ 손절/방어</div>
+                                <div style='color:#E6EDF3; font-weight:bold;'>{_sanitize_html_text(action.get("stop_price", "-"))}</div>
+                            </div>
                         </div>
-                        <div style='flex:1; background:rgba(0, 216, 165, 0.1); padding:10px; border-radius:8px; text-align:center; border:1px solid #00D8A5;'>
-                            <div style='color:#00D8A5; font-size:0.8rem;'>🛒 진입/매수</div>
-                            <div style='color:#E6EDF3; font-weight:bold;'>{action.get("entry_price", "-")}</div>
-                        </div>
-                        <div style='flex:1; background:rgba(49, 130, 246, 0.1); padding:10px; border-radius:8px; text-align:center; border:1px solid #3182F6;'>
-                            <div style='color:#3182F6; font-size:0.8rem;'>💰 익절/목표</div>
-                            <div style='color:#E6EDF3; font-weight:bold;'>{action.get("profit_price", "-")}</div>
-                        </div>
-                        <div style='flex:1; background:rgba(255, 75, 75, 0.1); padding:10px; border-radius:8px; text-align:center; border:1px solid #FF4B4B;'>
-                            <div style='color:#FF4B4B; font-size:0.8rem;'>🛡️ 손절/방어</div>
-                            <div style='color:#E6EDF3; font-weight:bold;'>{action.get("stop_price", "-")}</div>
-                        </div>
-                    </div>
-                """,
-                    unsafe_allow_html=True,
-                )
+                    """,
+                        unsafe_allow_html=True,
+                    )
 
             # Deep Dive Expander: Show FULL debate here
             st.markdown("<br>", unsafe_allow_html=True)
@@ -463,7 +539,7 @@ def render_stock_analysis():
             ):
                 # 1. AI Summary
                 st.markdown(
-                    f"**💡 의사결정 요약**: {meta.get('ai_summary', '내용 없음')}"
+                    f"**💡 의사결정 요약**: {_sanitize_html_text(meta.get('ai_summary', '내용 없음'))}"
                 )
                 st.markdown("---")
 
@@ -471,17 +547,21 @@ def render_stock_analysis():
                 full_clash = meta.get("clash_table", [])
                 if full_clash:
                     for fc in full_clash:
-                        st.markdown(f"#### {fc.get('agent', 'Expert')}")
-                        st.info(f"**주장(Logic):** {fc.get('logic', '-')}")
-                        st.warning(f"**반박(Counter):** {fc.get('counter', '-')}")
+                        st.markdown(f"#### {_sanitize_html_text(fc.get('agent', 'Expert'))}")
+                        st.info(f"**주장(Logic):** {_sanitize_html_text(fc.get('logic', '-'))}")
+                        st.warning(f"**반박(Counter):** {_sanitize_html_text(fc.get('counter', '-'))}")
                         st.divider()
 
                 # Show F-Score Quality Badge
-                f_rating = ticker_info.get("details", {}).get("f_score_rating", "N/A")
+                f_rating = (
+                    meta.get("details", {}).get("f_score_rating")
+                    or ticker_info.get("details", {}).get("f_score_rating")
+                    or "N/A"
+                )
                 st.markdown(
                     f"""
                     <div style='margin-top:15px; padding:10px; background:rgba(0, 216, 165, 0.1); border-radius:8px;'>
-                        <b>💎 재무 퀄리티 진단 (F-Score):</b> {f_rating}
+                        <b>💎 재무 퀄리티 진단 (F-Score):</b> {_sanitize_html_text(f_rating)}
                     </div>
                 """,
                     unsafe_allow_html=True,

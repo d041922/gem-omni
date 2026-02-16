@@ -305,6 +305,55 @@ class FactorEngine:
         return report
 
     @staticmethod
+    def generate_fundamental_axis_scores(extra_stats: Dict[str, Any]) -> Dict[str, float]:
+        """Build normalized 0-100 axis scores for value/quality/growth/risk."""
+        growth = extra_stats.get("growth", {}) if isinstance(extra_stats, dict) else {}
+        financials = extra_stats.get("financials", {}) if isinstance(extra_stats, dict) else {}
+        valuation = extra_stats.get("valuation", {}) if isinstance(extra_stats, dict) else {}
+        health = extra_stats.get("health", {}) if isinstance(extra_stats, dict) else {}
+
+        pe = valuation.get("trailing_pe")
+        peg = growth.get("peg_ratio")
+        roe = financials.get("roe")
+        gross_margin = financials.get("gross_margin")
+        rev_growth = growth.get("rev_growth")
+        debt_to_equity = health.get("debt_to_equity")
+        current_ratio = health.get("current_ratio")
+
+        # Value: lower PE/PEG is preferred with conservative fallback.
+        value_score = 50.0
+        if pe and pe > 0:
+            value_score = max(0.0, min(100.0, 100.0 - (float(pe) * 1.2)))
+        if peg and peg > 0:
+            value_score = (value_score + max(0.0, min(100.0, 120.0 - float(peg) * 60.0))) / 2.0
+
+        # Quality: profitability and margin.
+        quality_score = 50.0
+        if roe is not None:
+            quality_score = max(0.0, min(100.0, float(roe) * 200.0))
+        if gross_margin is not None:
+            quality_score = (quality_score + max(0.0, min(100.0, float(gross_margin) * 140.0))) / 2.0
+
+        # Growth: revenue growth 중심.
+        growth_score = 45.0
+        if rev_growth is not None:
+            growth_score = max(0.0, min(100.0, 50.0 + float(rev_growth) * 200.0))
+
+        # Risk: lower debt and acceptable current ratio.
+        risk_score = 55.0
+        if debt_to_equity is not None:
+            risk_score = max(0.0, min(100.0, 100.0 - float(debt_to_equity) * 0.25))
+        if current_ratio is not None:
+            risk_score = (risk_score + max(0.0, min(100.0, float(current_ratio) * 35.0))) / 2.0
+
+        return {
+            "value": round(value_score, 2),
+            "quality": round(quality_score, 2),
+            "growth": round(growth_score, 2),
+            "risk": round(risk_score, 2),
+        }
+
+    @staticmethod
     def calculate_pivot_points(last_row: pd.Series) -> Dict[str, Dict[str, float]]:
         h_v, l_v, c_v = (
             float(last_row["High"]),
