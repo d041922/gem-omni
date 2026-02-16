@@ -376,32 +376,233 @@ class FactorEngine:
     def generate_strategic_analysis(
         ticker: str, last_p: float, df: pd.DataFrame, market_context: Dict[str, Any]
     ) -> Dict[str, str]:
-        """[Strategic Analysis v3.3] 풍부한 전문가적 서사 복원"""
-        ema12 = df["Close"].ewm(span=12, adjust=False).mean().iloc[-1]
-        ema26 = df["Close"].ewm(span=26, adjust=False).mean().iloc[-1]
-        macd_val, rsi, bb, vol = (
-            ema12 - ema26,
-            FactorEngine.calculate_rsi(df),
-            FactorEngine.calculate_bb_stats(df),
-            FactorEngine.analyze_volume_energy(df),
-        )
-        p_val = (df["High"].iloc[-1] + df["Low"].iloc[-1] + df["Close"].iloc[-1]) / 3
+        """[Strategic Analysis v3.4] Regime-aware decision-oriented interpretation."""
+        if df.empty or "Close" not in df.columns:
+            return {
+                "position": "가격 데이터가 부족해 시장 위치를 판정할 수 없습니다.",
+                "trend": "추세 데이터 부족 (NEUTRAL).",
+                "supply": "수급/변동성 데이터 부족 (NEUTRAL).",
+                "action": "관망. 신뢰도: LOW (데이터 부족)",
+                "confidence": "LOW",
+            }
 
-        pos = f"현재가는 {last_p:,.2f}로, 피벗({p_val:,.2f}) 근처에서 방향성을 모색 중입니다. "
-        if bb["width"] < 0.05:
-            pos += "볼린저 밴드 폭이 좁아진 '스퀴즈' 국면으로 변동성 폭발 임박."
+        close = pd.to_numeric(df["Close"], errors="coerce").dropna()
+        if close.empty:
+            return {
+                "position": "가격 데이터가 부족해 시장 위치를 판정할 수 없습니다.",
+                "trend": "추세 데이터 부족 (NEUTRAL).",
+                "supply": "수급/변동성 데이터 부족 (NEUTRAL).",
+                "action": "관망. 신뢰도: LOW (데이터 부족)",
+                "confidence": "LOW",
+            }
+
+        price = float(close.iloc[-1])
+        prev_price = float(close.iloc[-2]) if len(close) >= 2 else price
+
+        ma20 = float(close.rolling(window=20).mean().iloc[-1]) if len(close) >= 20 else price
+        ma50 = float(close.rolling(window=50).mean().iloc[-1]) if len(close) >= 50 else ma20
+        ma200 = float(close.rolling(window=200).mean().iloc[-1]) if len(close) >= 200 else ma50
+
+        ema12 = float(close.ewm(span=12, adjust=False).mean().iloc[-1])
+        ema26 = float(close.ewm(span=26, adjust=False).mean().iloc[-1])
+        macd_val = ema12 - ema26
+        rsi = FactorEngine.calculate_rsi(df)
+        bb = FactorEngine.calculate_bb_stats(df)
+        vol = FactorEngine.analyze_volume_energy(df)
+        vol_ratio = float(vol.get("ratio", 100.0))
+
+        h_last = float(df["High"].iloc[-1]) if "High" in df.columns else price
+        l_last = float(df["Low"].iloc[-1]) if "Low" in df.columns else price
+        p_val = (h_last + l_last + price) / 3.0
+        pivots = FactorEngine.calculate_pivot_points(pd.Series({"High": h_last, "Low": l_last, "Close": price}))
+        classic = pivots.get("Classic", {})
+        s1 = float(classic.get("S1", p_val))
+        r1 = float(classic.get("R1", p_val))
+
+        # Regime
+        if ma20 > ma50 and price > ma50:
+            trend_regime = "UP"
+        elif ma20 < ma50 and price < ma50:
+            trend_regime = "DOWN"
         else:
-            pos += f"볼린저 밴드 {'상단' if bb['pos_pct'] > 50 else '하단'} {bb['pos_pct']:.1f}% 지점에서 지지력을 시험 중입니다."
+            trend_regime = "SIDE"
 
-        trend = "추세 추종: 완만한 우상향 흐름 유지."
-        if macd_val < 0 and 40 < rsi < 50:
-            trend = "지지 구축: MACD 음의 영역이나 RSI 견고한 '건전한 조정' 단계."
-        elif macd_val > 0 and rsi > 70:
-            trend = "단기 과열: 강한 매수세이나 기술적 조정 가능성에 유의."
+        bb_width = float(bb.get("width", 0.0))
+        if bb_width >= 0.08 or vol_ratio >= 170:
+            vol_regime = "HIGH"
+        elif bb_width <= 0.03 and vol_ratio <= 90:
+            vol_regime = "LOW"
+        else:
+            vol_regime = "NORMAL"
 
-        supply = f"거래량 {vol['ratio']}% ({vol['nature']}). {'매수 우위' if last_p > p_val else '매도 압력 우세'}."
-        action = f"{p_val:,.2f}선 지지 여부를 확인하며 분할 {'매도' if rsi > 70 else '매수' if rsi < 35 else '관망'} 대응이 유리합니다."
-        return {"position": pos, "trend": trend, "supply": supply, "action": action}
+        # Position
+        pos_pct = float(bb.get("pos_pct", 50.0))
+        bb_lower = float(bb.get("lower", price))
+        bb_upper = float(bb.get("upper", price))
+        swing_low = float(close.tail(20).min()) if len(close) >= 20 else price
+        swing_high = float(close.tail(20).max()) if len(close) >= 20 else price
+
+        support_candidates = [s1, bb_lower, ma200, swing_low]
+        resistance_candidates = [r1, bb_upper, swing_high]
+        near_support = min(abs(price - x) / max(price, 1.0) for x in support_candidates) <= 0.015
+        near_resistance = min(abs(price - x) / max(price, 1.0) for x in resistance_candidates) <= 0.015
+        near_pivot = abs(price - p_val) / max(price, 1.0) <= 0.008
+        if pos_pct >= 85 and rsi >= 65:
+            position_state = "OVEREXTENDED"
+        elif near_support:
+            position_state = "NEAR_SUPPORT"
+        elif near_resistance:
+            position_state = "NEAR_RESISTANCE"
+        elif near_pivot:
+            position_state = "NEAR_PIVOT"
+        else:
+            position_state = "NEUTRAL"
+
+        ma50_gap_pct = ((price - ma50) / max(ma50, 1.0)) * 100.0
+        position = (
+            f"결론: {position_state}. "
+            f"근거: BB {pos_pct:.1f}%, 피벗 {p_val:,.2f}, MA50 대비 {ma50_gap_pct:+.2f}%."
+        )
+
+        # Trend
+        if trend_regime == "UP" and macd_val >= 0:
+            trend_state = "BULLISH"
+        elif trend_regime == "DOWN" and macd_val <= 0:
+            trend_state = "BEARISH"
+        else:
+            trend_state = "NEUTRAL"
+
+        strength_points = 0
+        strength_points += 1 if price > ma50 else 0
+        strength_points += 1 if price > ma200 else 0
+        strength_points += 1 if macd_val > 0 else 0
+        strength_points += 1 if rsi >= 55 else 0
+
+        if strength_points >= 3:
+            trend_strength = "STRONG"
+        elif strength_points >= 2:
+            trend_strength = "MODERATE"
+        else:
+            trend_strength = "WEAK"
+
+        turning_risk = "LOW"
+        if trend_state == "BULLISH" and (rsi > 70 or macd_val < 0):
+            turning_risk = "HIGH"
+        elif trend_state == "BEARISH" and (rsi < 30 or macd_val > 0):
+            turning_risk = "MEDIUM"
+        elif trend_state == "NEUTRAL":
+            turning_risk = "MEDIUM"
+
+        regime_kor = "상승" if trend_regime == "UP" else "하락" if trend_regime == "DOWN" else "횡보"
+        trend = (
+            f"결론: {regime_kor} 국면({trend_state}/{trend_strength}). "
+            f"근거: MA20 {ma20:,.2f} vs MA50 {ma50:,.2f}, MACD {macd_val:+.2f}, RSI {rsi:.1f}. "
+            f"리스크: 전환 {turning_risk}."
+        )
+
+        # Supply / Volatility
+        price_change = price - prev_price
+        if vol_ratio > 150 and price_change > 0 and trend_regime == "UP":
+            flow_state = "ACCUMULATION"
+        elif vol_ratio > 150 and price_change < 0 and trend_regime == "DOWN":
+            flow_state = "DISTRIBUTION"
+        else:
+            flow_state = "NEUTRAL"
+
+        if vol_regime == "HIGH" and abs(price - p_val) / max(price, 1.0) <= 0.01:
+            risk_state = "CHOPPY"
+        elif vol_regime == "HIGH":
+            risk_state = "BREAKOUT_RISK"
+        elif vol_regime == "LOW":
+            risk_state = "CALM"
+        else:
+            risk_state = "NORMAL"
+
+        flow_kor = (
+            "매집(ACCUMULATION)"
+            if flow_state == "ACCUMULATION"
+            else "분배(DISTRIBUTION)"
+            if flow_state == "DISTRIBUTION"
+            else "중립(NEUTRAL)"
+        )
+        supply = (
+            f"결론: {flow_kor}. "
+            f"근거: 거래량 {vol_ratio:.1f}% ({vol.get('nature', 'N/A')}), 변동성 {vol_regime}/{risk_state}."
+        )
+
+        # Action with guardrails
+        action_level = "WATCH"
+        if trend_state == "BULLISH" and rsi < 40 and position_state in {"NEAR_SUPPORT", "NEUTRAL"} and vol_regime != "HIGH":
+            action_level = "ENTER"
+        elif position_state == "OVEREXTENDED" or rsi > 70:
+            action_level = "REDUCE"
+        elif trend_state == "BEARISH" and vol_regime == "HIGH":
+            action_level = "AVOID"
+
+        # Guardrail: downtrend dip-buy blocked
+        if trend_regime == "DOWN" and rsi < 35 and action_level == "ENTER":
+            action_level = "WATCH"
+
+        # Confidence
+        coverage_count = 0
+        coverage_total = 6
+        coverage_count += 1 if len(close) >= 50 else 0
+        coverage_count += 1 if len(close) >= 20 else 0
+        coverage_count += 1 if "High" in df.columns else 0
+        coverage_count += 1 if "Low" in df.columns else 0
+        coverage_count += 1 if "Volume" in df.columns else 0
+        coverage_count += 1 if macd_val == macd_val else 0
+        coverage_ratio = coverage_count / max(coverage_total, 1)
+
+        agreement = 0.0
+        if trend_state == "BULLISH" and flow_state == "ACCUMULATION":
+            agreement = 1.0
+        elif trend_state == "BEARISH" and flow_state == "DISTRIBUTION":
+            agreement = 1.0
+        elif trend_state == "NEUTRAL" or flow_state == "NEUTRAL":
+            agreement = 0.5
+
+        vol_penalty = 0.2 if vol_regime == "HIGH" else 0.0
+        confidence_score = 60
+        confidence_score += 8 if trend_state in {"BULLISH", "BEARISH"} else -5
+        confidence_score += 6 if flow_state in {"ACCUMULATION", "DISTRIBUTION"} else 0
+        confidence_score -= 10 if vol_regime == "HIGH" else 0
+        confidence_score -= 8 if turning_risk == "HIGH" else 0
+        confidence_score += int((coverage_ratio - 0.5) * 10)
+        confidence_score = max(35, min(85, confidence_score))
+
+        if confidence_score >= 72:
+            confidence = "HIGH"
+        elif confidence_score >= 56:
+            confidence = "MEDIUM"
+        else:
+            confidence = "LOW"
+
+        guardrail = "고변동성 구간은 포지션 사이징 축소" if vol_regime == "HIGH" else "레벨 이탈 전 과도한 추격 금지"
+        reason = (
+            "횡보+고변동성으로 방향성 확인 전 관망 우위"
+            if action_level == "WATCH"
+            else "과열/저항 구간으로 리스크 관리 우선"
+            if action_level == "REDUCE"
+            else "하락 추세+고변동성 조합으로 회피 우위"
+            if action_level == "AVOID"
+            else "상승 쪽 정합 신호 확인 시 분할 진입"
+        )
+        action = (
+            f"현재 판단: {action_level} (신뢰도 {confidence} {confidence_score}점). "
+            f"신뢰도: {confidence}. "
+            f"이유: {reason}. "
+            f"가드레일: {guardrail}. "
+            f"[Coverage {coverage_ratio:.2f} / Agreement {agreement:.2f} / VolPenalty -{vol_penalty:.2f}]"
+        )
+
+        return {
+            "position": position,
+            "trend": trend,
+            "supply": supply,
+            "action": action,
+            "confidence": confidence,
+        }
 
     @staticmethod
     def calculate_moving_averages(df: pd.DataFrame) -> List[Dict[str, Any]]:
