@@ -3,6 +3,7 @@
 import streamlit as st
 from dotenv import load_dotenv
 
+from core.env_config import get_env, get_feature_flag
 from pages.style_utils import load_custom_css
 from skills.data_orchestrator import DataOrchestrator
 
@@ -17,6 +18,32 @@ def _init() -> DataOrchestrator:
     )
     load_custom_css()
     return DataOrchestrator()
+
+
+def _require_auth() -> None:
+    """Enforce password auth unless explicit local bypass is enabled."""
+    bypass_auth = get_feature_flag("OMNI_DEV_BYPASS_AUTH", default=False)
+    if bypass_auth:
+        st.session_state["authenticated"] = True
+        return
+
+    app_password = get_env("APP_PASSWORD", "")
+    if not app_password:
+        st.error("APP_PASSWORD is not configured. Configure Streamlit Secrets and reboot.")
+        st.stop()
+
+    if st.session_state.get("authenticated", False):
+        return
+
+    st.title("GEM: OMNI")
+    st.caption("Password required")
+    entered = st.text_input("Password", type="password")
+    if st.button("Login", use_container_width=True):
+        if entered == app_password:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        st.error("Invalid password")
+    st.stop()
 
 
 def _sync_if_needed(orchestrator: DataOrchestrator) -> None:
@@ -58,6 +85,10 @@ def _render_sidebar(orchestrator: DataOrchestrator) -> None:
             with st.spinner("Syncing..."):
                 orchestrator.sync_portfolio()
                 st.rerun()
+        st.divider()
+        if st.button("Logout", use_container_width=True):
+            st.session_state["authenticated"] = False
+            st.rerun()
 
 
 def _route() -> None:
@@ -92,6 +123,7 @@ def _route() -> None:
 
 def main() -> None:
     orchestrator = _init()
+    _require_auth()
     _sync_if_needed(orchestrator)
 
     if "current_page" not in st.session_state:
