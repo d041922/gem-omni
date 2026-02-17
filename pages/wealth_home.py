@@ -5,8 +5,7 @@ GEM: OMNI Wealth Home (stabilized)
 import pandas as pd
 import streamlit as st
 
-from skills.data_orchestrator import DataOrchestrator
-from skills.market_screener import MarketScreener
+from core.application.query_service import QueryService
 
 
 def format_korean_currency(v: float) -> str:
@@ -22,23 +21,21 @@ def render_wealth_home() -> None:
     # Legacy key used by flow test; harmless compatibility input.
     st.text_input("Analysis Ticker", value="", key="analysis_ticker_input")
 
-    orchestrator = DataOrchestrator()
-    state = orchestrator.read_state()
-    data = state.get("data", {})
-    summary = data.get("portfolio", {}).get("summary", {})
-    holdings = data.get("portfolio", {}).get("holdings", [])
-    intel = data.get("intelligence", {}).get("screener_results", [])
+    query_service = QueryService()
+    payload = query_service.get_wealth_home_payload()
+    holdings = payload.get("holdings", [])
+    intel = payload.get("top_picks", [])
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.metric("My Portfolio", format_korean_currency(summary.get("total_krw", 0)))
+        st.metric("My Portfolio", format_korean_currency(payload.get("total_asset", 0)))
     with c2:
-        st.metric("Stock", format_korean_currency(summary.get("stock_krw", 0)))
+        st.metric("Stock", format_korean_currency(payload.get("holdings_value", 0)))
     with c3:
-        st.metric("Cash", format_korean_currency(summary.get("cash_krw", 0)))
+        st.metric("Cash", format_korean_currency(payload.get("cash", 0)))
 
     if st.button("Sync Portfolio"):
-        orchestrator.sync_portfolio()
+        query_service.sync_wealth_portfolio()
         st.rerun()
 
     df = pd.DataFrame(holdings)
@@ -67,9 +64,10 @@ def render_wealth_home() -> None:
         st.caption("No screener results yet.")
 
     if st.button("Run Scan", key="btn_run_scan"):
-        results = MarketScreener(orchestrator).screen_stocks(["AAPL", "NVDA", "TSLA"])
-        MarketScreener(orchestrator).save_results(results)
-        st.success("Scan complete")
+        if query_service.run_wealth_scan():
+            st.success("Scan complete")
+        else:
+            st.info("No tickers available for scan.")
 
 
 if __name__ == "__main__":
